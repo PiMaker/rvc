@@ -1,0 +1,15 @@
+[package]
+name = "elfy"
+version = "0.1.0"
+authors = ["Stefan <stefan@pimaker.at>"]
+edition = "2018"
+
+[lib]
+name = "elfy"
+crate-type = ["staticlib"]
+
+[dependencies]
+elf = "0.0.10"
+
+[build-dependencies]
+cbindgen = "0.19"
