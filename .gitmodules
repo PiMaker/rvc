@@ -4,3 +4,6 @@
 [submodule "riscv-tests"]
 	path = riscv-tests
 	url = https://github.com/riscv/riscv-tests
+[submodule "riscv-rust"]
+	path = riscv-rust
+	url = https://github.com/takahirox/riscv-rust

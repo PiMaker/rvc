@@ -6,6 +6,7 @@
 #include "types.h"
 #include "ins.h"
 #include "mem.h"
+#include "trap.h"
 #include "csr.h"
 
 #define AS_SIGNED(val) (*(int32_t*)&val)
@@ -16,10 +17,8 @@ const uint ONE = 1;
 #define DEF(name, fmt_t, code) \
     void emu_##name(cpu_t *cpu, uint ins_word, ins_ret *ret, fmt_t ins) { code }
 
-#define NOT_IMPL { printf("Unimplemented instruction: %08x\n", ins_word); exit(3); }
-
 #define WR_RD(code) { ret->write_reg = ins.rd; ret->write_val = AS_UNSIGNED(code); }
-#define WR_PC(code) { ret->pc_write = 1; ret->pc_val = code; }
+#define WR_PC(code) { ret->pc_val = code; }
 #define WR_CSR(code) { ret->csr_write = ins.csr; ret->csr_val = code; }
 
 /*
@@ -32,20 +31,54 @@ DEF(add, FormatR, { // rv32i
 DEF(addi, FormatI, { // rv32i
     WR_RD(AS_SIGNED(cpu->xreg[ins.rs1]) + AS_SIGNED(ins.imm));
 })
+DEF(amoswap_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2]);
+    WR_RD(tmp)
+})
 DEF(amoadd_w, FormatR, { // rv32a
-    NOT_IMPL
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] + tmp);
+    WR_RD(tmp)
+})
+DEF(amoxor_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] ^ tmp);
+    WR_RD(tmp)
 })
 DEF(amoand_w, FormatR, { // rv32a
-    NOT_IMPL
-})
-DEF(amomaxu_w, FormatR, { // rv32a
-    NOT_IMPL
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] & tmp);
+    WR_RD(tmp)
 })
 DEF(amoor_w, FormatR, { // rv32a
-    NOT_IMPL
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] | tmp);
+    WR_RD(tmp)
 })
-DEF(amoswap_w, FormatR, { // rv32a
-    NOT_IMPL
+DEF(amomin_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint sec = cpu->xreg[ins.rs2];
+    mem_set_word(cpu, cpu->xreg[ins.rs1], AS_SIGNED(sec) < AS_SIGNED(tmp) ? sec : tmp);
+    WR_RD(tmp)
+})
+DEF(amomax_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint sec = cpu->xreg[ins.rs2];
+    mem_set_word(cpu, cpu->xreg[ins.rs1], AS_SIGNED(sec) > AS_SIGNED(tmp) ? sec : tmp);
+    WR_RD(tmp)
+})
+DEF(amominu_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint sec = cpu->xreg[ins.rs2];
+    mem_set_word(cpu, cpu->xreg[ins.rs1], sec < tmp ? sec : tmp);
+    WR_RD(tmp)
+})
+DEF(amomaxu_w, FormatR, { // rv32a
+    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint sec = cpu->xreg[ins.rs2];
+    mem_set_word(cpu, cpu->xreg[ins.rs1], sec > tmp ? sec : tmp);
+    WR_RD(tmp)
 })
 DEF(and, FormatR, { // rv32i
     WR_RD(cpu->xreg[ins.rs1] & cpu->xreg[ins.rs2])
@@ -87,19 +120,29 @@ DEF(bne, FormatB, { // rv32i
     }
 })
 DEF(csrrc, FormatCSR, { // system
-    WR_CSR(ins.value & (~cpu->xreg[ins.rs]));
+    uint rs = cpu->xreg[ins.rs];
+    if (rs != 0) {
+        WR_CSR(ins.value & ~rs);
+    }
     WR_RD(ins.value)
 })
 DEF(csrrci, FormatCSR, { // system
-    WR_CSR(ins.value & (~ins.rs));
+    if (ins.rs != 0) {
+        WR_CSR(ins.value & (~ins.rs));
+    }
     WR_RD(ins.value)
 })
 DEF(csrrs, FormatCSR, { // system
-    WR_CSR(ins.value | cpu->xreg[ins.rs]);
+    uint rs = cpu->xreg[ins.rs];
+    if (rs != 0) {
+        WR_CSR(ins.value | rs);
+    }
     WR_RD(ins.value)
 })
 DEF(csrrsi, FormatCSR, { // system
-    WR_CSR(ins.value | ins.rs);
+    if (ins.rs != 0) {
+        WR_CSR(ins.value | ins.rs);
+    }
     WR_RD(ins.value)
 })
 DEF(csrrw, FormatCSR, { // system
@@ -136,7 +179,7 @@ DEF(divu, FormatR, { // rv32m
     WR_RD(result)
 })
 DEF(ebreak, FormatEmpty, { // system
-    NOT_IMPL
+    // unnecessary?
 })
 DEF(ecall, FormatEmpty, { // system
     if (cpu->xreg[17] == 93) {
@@ -146,7 +189,15 @@ DEF(ecall, FormatEmpty, { // system
         exit(status);
     }
 
-    NOT_IMPL
+    ret->trap.en = true;
+    ret->trap.value = cpu->pc;
+    if (cpu->csr.privilege == PRIV_USER) {
+        ret->trap.type = trap_EnvironmentCallFromUMode;
+    } else if (cpu->csr.privilege == PRIV_SUPERVISOR) {
+        ret->trap.type = trap_EnvironmentCallFromSMode;
+    } else { // PRIV_MACHINE
+        ret->trap.type = trap_EnvironmentCallFromMMode;
+    }
 })
 DEF(fence, FormatEmpty, { // rv32i
     // skip
@@ -179,7 +230,11 @@ DEF(lhu, FormatI, { // rv32i
     WR_RD(tmp)
 })
 DEF(lr_w, FormatR, { // rv32a
-    NOT_IMPL
+    uint addr = cpu->xreg[ins.rs1];
+    uint tmp = mem_get_word(cpu, addr);
+    cpu->reservation_en = true;
+    cpu->reservation_addr = addr;
+    WR_RD(tmp)
 })
 DEF(lui, FormatU, { // rv32i
     WR_RD(ins.imm)
@@ -190,7 +245,17 @@ DEF(lw, FormatI, { // rv32i
     WR_RD(tmp)
 })
 DEF(mret, FormatEmpty, { // system
-    // skip ? FIXME
+    uint newpc = get_csr(cpu, CSR_MEPC, ret);
+    if (!ret->trap.en) {
+        uint status = read_csr_raw(cpu, CSR_MSTATUS);
+        uint mpie = (status >> 7) & 1;
+        uint mpp = (status >> 11) & 0x3;
+        uint mprv = mpp == PRIV_MACHINE ? ((status >> 17) & 1) : 0;
+        uint new_status = (status & ~0x21888) | (mprv << 17) | (mpie << 3) | (1 << 7);
+        write_csr_raw(cpu, CSR_MSTATUS, new_status);
+        cpu->csr.privilege = mpp;
+        WR_PC(newpc)
+    }
 })
 DEF(mul, FormatR, { // rv32m
     uint tmp = AS_SIGNED(cpu->xreg[ins.rs1]) * AS_SIGNED(cpu->xreg[ins.rs2]);
@@ -243,7 +308,15 @@ DEF(sb, FormatS, { // rv32i
     mem_set_byte(cpu, cpu->xreg[ins.rs1] + ins.imm, cpu->xreg[ins.rs2]);
 })
 DEF(sc_w, FormatR, { // rv32a
-    NOT_IMPL
+    // I'm pretty sure this is not it chief, but it does the trick for now
+    uint addr = cpu->xreg[ins.rs1];
+    if (cpu->reservation_en && cpu->reservation_addr == addr) {
+        mem_set_word(cpu, addr, cpu->xreg[ins.rs2]);
+        cpu->reservation_en = false;
+        WR_RD(ZERO)
+    } else {
+        WR_RD(ONE)
+    }
 })
 DEF(sfence_vma, FormatEmpty, { // system
     // skip
@@ -298,7 +371,17 @@ DEF(srai, FormatR, { // rv32i
                    cpu->xreg[ins.rs1] >> shamt)
 })
 DEF(sret, FormatEmpty, { // system
-    NOT_IMPL
+    uint newpc = get_csr(cpu, CSR_SEPC, ret);
+    if (!ret->trap.en) {
+        uint status = read_csr_raw(cpu, CSR_SSTATUS);
+        uint spie = (status >> 5) & 1;
+        uint spp = (status >> 8) & 1;
+        uint mprv = spp == PRIV_MACHINE ? ((status >> 17) & 1) : 0;
+        uint new_status = (status & ~0x20122) | (mprv << 17) | (spie << 1) | (1 << 5);
+        write_csr_raw(cpu, CSR_SSTATUS, new_status);
+        cpu->csr.privilege = spp;
+        WR_PC(newpc)
+    }
 })
 DEF(srl, FormatR, { // rv32i
     WR_RD(cpu->xreg[ins.rs1] >> cpu->xreg[ins.rs2])
@@ -314,10 +397,10 @@ DEF(sw, FormatS, { // rv32i
     mem_set_word(cpu, cpu->xreg[ins.rs1] + ins.imm, cpu->xreg[ins.rs2]);
 })
 DEF(uret, FormatEmpty, { // system
-    NOT_IMPL
+    // unnecessary?
 })
 DEF(wfi, FormatEmpty, { // system
-    NOT_IMPL
+    // no-op is valid here, so skip
 })
 DEF(xor, FormatR, { // rv32i
     WR_RD(cpu->xreg[ins.rs1] ^ cpu->xreg[ins.rs2])
@@ -343,7 +426,7 @@ DEF(xori, FormatI, { // rv32i
 }
 ins_ret ins_select(cpu_t *cpu, uint ins_word) {
     uint ins_masked;
-    ins_ret ret = ins_ret_noop();
+    ins_ret ret = ins_ret_noop(cpu);
 
     FormatR ins_FormatR = parse_FormatR(ins_word);
     FormatI ins_FormatI = parse_FormatI(ins_word);
@@ -356,7 +439,7 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
 
     if ((ins_word & 0x00000073) == 0x00000073) {
         // could be CSR instruction
-        ins_FormatCSR.value = get_csr(ins_FormatCSR.csr);
+        ins_FormatCSR.value = get_csr(cpu, ins_FormatCSR.csr, &ret);
     }
 
     ins_masked = ins_word & 0x0000007f;
@@ -399,11 +482,15 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
     }
     ins_masked = ins_word & 0xf800707f;
     switch (ins_masked) {
-        RUN(amoadd_w, 0x0000202f, ins_FormatR)
-        RUN(amoand_w, 0x6000202f, ins_FormatR)
-        RUN(amomaxu_w, 0xe000202f, ins_FormatR)
-        RUN(amoor_w, 0x4000202f, ins_FormatR)
         RUN(amoswap_w, 0x0800202f, ins_FormatR)
+        RUN(amoadd_w, 0x0000202f, ins_FormatR)
+        RUN(amoxor_w, 0x2000202f, ins_FormatR)
+        RUN(amoand_w, 0x6000202f, ins_FormatR)
+        RUN(amoor_w, 0x4000202f, ins_FormatR)
+        RUN(amomin_w, 0x8000202f, ins_FormatR)
+        RUN(amomax_w, 0xa000202f, ins_FormatR)
+        RUN(amominu_w, 0xc000202f, ins_FormatR)
+        RUN(amomaxu_w, 0xe000202f, ins_FormatR)
         RUN(sc_w, 0x1800202f, ins_FormatR)
     }
     ins_masked = ins_word & 0xf9f0707f;
@@ -452,26 +539,40 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
     }
 
     printf("Invalid instruction: %08x\n", ins_word);
-    exit(2);
+    ret.trap.en = true;
+    ret.trap.type = trap_IllegalInstruction;
+    ret.trap.value = cpu->pc;
+    return ret;
 }
 
 
-void emulate(cpu_t *cpu, uint ins_word) {
-    ins_ret ret = ins_select(cpu, ins_word);
+void emulate(cpu_t *cpu) {
+    uint ins_word = 0;
+    ins_ret ret;
+    if ((cpu->pc & 0x3) == 0) {
+        ins_word = mem_get_word(cpu, cpu->pc);
+        ret = ins_select(cpu, ins_word);
 
-    if (ret.pc_write > 0) {
-        cpu->pc = ret.pc_val;
+        if (ret.csr_write && !ret.trap.en) {
+            set_csr(cpu, ret.csr_write, ret.csr_val, &ret);
+        }
+
+        if (!ret.trap.en && ret.write_reg < 32 && ret.write_reg > 0) {
+            cpu->xreg[ret.write_reg] = ret.write_val;
+        }
     } else {
-        cpu->pc += 4;
+        ret = ins_ret_noop(cpu);
+        ret.trap.en = true;
+        ret.trap.type = trap_InstructionAddressMisaligned;
+        ret.trap.value = cpu->pc;
     }
 
-    if (ret.write_reg < 32 && ret.write_reg > 0) {
-        cpu->xreg[ret.write_reg] = ret.write_val;
+    if (ret.trap.en) {
+        handle_trap(cpu, &ret, false);
     }
 
-    if (ret.csr_write) {
-        set_csr(ret.csr_write, ret.csr_val);
-    }
+    // ret.pc_val should be set to pc+4 by default
+    cpu->pc = ret.pc_val;
 }
 
 #endif

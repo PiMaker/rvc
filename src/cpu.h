@@ -6,15 +6,29 @@
 #include "types.h"
 #include "mem.h"
 #include "emu.h"
+#include "csr.h"
 
 cpu_t cpu_init(uint8_t *mem) {
     cpu_t ret;
     ret.clock = 0;
-    for (unsigned char i = 0; i < 32; i++) {
+    for (uint i = 0; i < 32; i++) {
         ret.xreg[i] = 0;
     }
+    ret.xreg[0xb] = 0x1020; // linux?
     ret.pc = 0x80000000;
     ret.mem = mem;
+    ret.reservation_en = false;
+
+    init_csrs(&ret);
+
+    ret.debug_single_step =
+#ifdef SINGLE_STEP
+        true
+#else
+        false
+#endif
+    ;
+
     return ret;
 }
 
@@ -33,9 +47,7 @@ void cpu_dump(cpu_t *cpu) {
 
 void cpu_tick(cpu_t *cpu) {
     cpu->clock++;
-
-    uint ins_raw = mem_get_word(cpu, cpu->pc);
-    emulate(cpu, ins_raw);
+    emulate(cpu);
 }
 
 #endif

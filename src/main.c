@@ -1,4 +1,5 @@
 /* #define VERBOSE */
+/* #define SINGLE_STEP */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,12 @@ int main(int argc, char *argv[]) {
 #ifdef VERBOSE
         cpu_dump(&cpu);
 #endif
+
+        if (cpu.debug_single_step) {
+            fflush(stdout);
+            fflush(stdin);
+            while(getchar()!='\n');
+        }
     }
 
     return 0;

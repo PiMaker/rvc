@@ -4,17 +4,22 @@ echo "==== Building rvc ===="
 make clean
 intercept-build make
 
+CLEAN="$2"
+
 function run_test {
     pushd ./riscv-tests/isa
 
     # rm "$1"
     # rm "$1.text"
-    make "$1"
+    if [ ! -f "$1" ] || [ -n "$CLEAN" ]; then
+        make "$1"
+    fi
 
     # riscv64-unknown-elf-objcopy -j .text.init -O binary "$1" "$1.text"
 
     popd
 
+    echo "Running: ./rvc \"./riscv-tests/isa/$1\""
     timeout 5s ./rvc "./riscv-tests/isa/$1"
 
     if [ $? -gt 0 ]; then
@@ -71,18 +76,19 @@ rv32um-p-mulhsu
 rv32um-p-mulhu
 rv32um-p-rem
 rv32um-p-remu
-#rv32ua-p-amoadd_w
-#rv32ua-p-amoand_w
-#rv32ua-p-amomaxu_w
-#rv32ua-p-amomax_w
-#rv32ua-p-amominu_w
-#rv32ua-p-amomin_w
-#rv32ua-p-amoor_w
-#rv32ua-p-amoswap_w
-#rv32ua-p-amoxor_w
-#rv32mi-p-mcsr
-#rv32mi-p-csr
-#rv32si-p-csr"
+rv32ua-p-lrsc
+rv32ua-p-amoadd_w
+rv32ua-p-amoand_w
+rv32ua-p-amomaxu_w
+rv32ua-p-amomax_w
+rv32ua-p-amominu_w
+rv32ua-p-amomin_w
+rv32ua-p-amoor_w
+rv32ua-p-amoswap_w
+rv32ua-p-amoxor_w
+rv32mi-p-mcsr
+rv32mi-p-csr
+rv32si-p-csr"
     for t in $TESTS; do
         if [[ "$t" =~ ^# ]]; then continue; fi
         echo
@@ -96,5 +102,5 @@ rv32um-p-remu
 elif [ -n "$1" ]; then
     run_test "$1"
 else
-    echo "./test.sh (all|rv32ui-p-foo...)"
+    echo "./test.sh (all|rv32ui-p-foo...) [--clean]"
 fi
