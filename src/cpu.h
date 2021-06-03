@@ -8,26 +8,31 @@
 #include "emu.h"
 #include "csr.h"
 
-cpu_t cpu_init(uint8_t *mem) {
+cpu_t cpu_init(uint8_t *mem, uint8_t *dtb) {
     cpu_t ret;
     ret.clock = 0;
     for (uint i = 0; i < 32; i++) {
         ret.xreg[i] = 0;
     }
-    ret.xreg[0xb] = 0x1020; // linux?
+    ret.xreg[0xb] = 0x1020; // linux? device tree?
     ret.pc = 0x80000000;
     ret.mem = mem;
     ret.reservation_en = false;
 
     init_csrs(&ret);
 
-    ret.debug_single_step =
-#ifdef SINGLE_STEP
-        true
-#else
-        false
-#endif
-    ;
+    ret.dtb = dtb;
+
+    ret.clint.msip = false;
+    ret.clint.mtimecmp_lo = 0;
+    ret.clint.mtimecmp_hi = 0;
+    ret.clint.mtime_lo = 0;
+    ret.clint.mtime_hi = 0;
+
+    ret.uart.rbr_thr_ier_iir = 0;
+    ret.uart.lcr_mcr_lsr_scr = 0x00200000; // LSR_THR_EMPTY is set
+    ret.uart.thre_ip = false;
+    ret.uart.interrupting = false;
 
     return ret;
 }

@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include <string.h>
 
+static int VERBOSE = 0;
+static bool SINGLE_STEP = false;
+
 typedef uint32_t uint;
 typedef uint32_t uint;
 
@@ -14,20 +17,37 @@ typedef struct {
 } csr_state;
 
 typedef struct {
+    uint rbr_thr_ier_iir;
+    uint lcr_mcr_lsr_scr;
+    bool thre_ip;
+    bool interrupting;
+} uart_state;
+
+typedef struct {
+    bool msip;
+    uint mtimecmp_lo;
+    uint mtimecmp_hi;
+    uint mtime_lo;
+    uint mtime_hi;
+} clint_state;
+
+typedef struct {
     uint clock;
     uint xreg[32];
     uint pc;
     uint8_t *mem;
+    uint8_t *dtb;
     csr_state csr;
+    clint_state clint;
+    uart_state uart;
 
     bool reservation_en;
     uint reservation_addr;
-
-    bool debug_single_step;
 } cpu_t;
 
 typedef struct {
     bool en;
+    bool irq;
     uint type;
     uint value;
 } trap;

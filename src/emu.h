@@ -413,11 +413,7 @@ DEF(xori, FormatI, { // rv32i
  *   END INSTRUCTIONS
  */
 
-#ifdef VERBOSE
-#define pr_ins(name) printf("INS %s (%08x)\n", #name, ins_word);
-#else
-#define pr_ins(name) {}
-#endif
+#define pr_ins(name) if (VERBOSE >= 3) printf("INS %s (%08x)\n", #name, ins_word);
 
 #define RUN(name, data, insf) case data : { \
     pr_ins(name) \
@@ -538,10 +534,11 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
         RUN(wfi, 0x10500073, ins_FormatEmpty)
     }
 
-    printf("Invalid instruction: %08x\n", ins_word);
+    if (VERBOSE >= 1)
+        printf("Invalid instruction: %08x\n", ins_word);
     ret.trap.en = true;
     ret.trap.type = trap_IllegalInstruction;
-    ret.trap.value = cpu->pc;
+    ret.trap.value = ins_word;
     return ret;
 }
 
@@ -567,9 +564,25 @@ void emulate(cpu_t *cpu) {
         ret.trap.value = cpu->pc;
     }
 
-    if (ret.trap.en) {
-        handle_trap(cpu, &ret, false);
+    // handle CLINT IRQs
+    if (cpu->clint.msip) {
+        cpu->csr.data[CSR_MIP] |= MIP_MSIP;
     }
+
+    cpu->clint.mtime_lo++;
+    cpu->clint.mtime_hi += cpu->clint.mtime_lo == 0 ? 1 : 0;
+
+    if (cpu->clint.mtimecmp_lo != 0 && cpu->clint.mtimecmp_hi != 0 && (cpu->clint.mtime_hi > cpu->clint.mtimecmp_hi || (cpu->clint.mtime_hi == cpu->clint.mtimecmp_hi && cpu->clint.mtime_lo >= cpu->clint.mtimecmp_lo))) {
+        cpu->csr.data[CSR_MIP] |= MIP_MTIP;
+    }
+
+    uart_tick(cpu);
+    if (cpu->uart.interrupting) {
+        uint cur_mip = read_csr_raw(cpu, CSR_MIP);
+        write_csr_raw(cpu, CSR_MIP, cur_mip | MIP_SEIP);
+    }
+
+    handle_irq_and_trap(cpu, &ret);
 
     // ret.pc_val should be set to pc+4 by default
     cpu->pc = ret.pc_val;

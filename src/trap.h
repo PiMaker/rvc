@@ -33,6 +33,14 @@ const uint trap_UserExternalInterrupt = interrupt_offset + 8;
 const uint trap_SupervisorExternalInterrupt = interrupt_offset + 9;
 const uint trap_MachineExternalInterrupt = interrupt_offset + 11;
 
+const uint MIP_MEIP = 0x800;
+const uint MIP_MTIP = 0x080;
+const uint MIP_MSIP = 0x008;
+const uint MIP_SEIP = 0x200;
+const uint MIP_STIP = 0x020;
+const uint MIP_SSIP = 0x002;
+const uint MIP_ALL = MIP_MEIP | MIP_MTIP | MIP_MSIP | MIP_SEIP | MIP_STIP | MIP_SSIP;
+
 // include after trap_ definitions
 #include "csr.h"
 
@@ -133,12 +141,39 @@ bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
         write_csr_raw(cpu, CSR_SSTATUS, new_status);
     }
 
-#ifdef VERBOSE
-    printf("trap: type=%08x value=%08x (IRQ: %d) moved PC from @%08x to @%08x\n", t.type, t.value, is_interrupt, cpu->pc, ret->pc_val);
-#endif
-    /* cpu->debug_single_step = true; */
+    if (VERBOSE >= 1)
+        printf("trap: type=%08x value=%08x (IRQ: %d) moved PC from @%08x to @%08x\n", t.type, t.value, is_interrupt, cpu->pc, ret->pc_val);
 
     return true;
+}
+
+void handle_irq_and_trap(cpu_t *cpu, ins_ret *ret) {
+    bool trap = ret->trap.en;
+    uint mip_reset = MIP_ALL;
+    uint cur_mip = read_csr_raw(cpu, CSR_MIP);
+
+    if (!trap) {
+        uint mirq = cur_mip & read_csr_raw(cpu, CSR_MIE);
+#define HANDLE(mip, ttype) case mip: mip_reset = mip; ret->trap.en = true; ret->trap.type = ttype; break;
+        switch (mirq & MIP_ALL) {
+            HANDLE(MIP_MEIP, trap_MachineExternalInterrupt)
+            HANDLE(MIP_MSIP, trap_MachineSoftwareInterrupt)
+            HANDLE(MIP_MTIP, trap_MachineTimerInterrupt)
+            HANDLE(MIP_SEIP, trap_SupervisorExternalInterrupt)
+            HANDLE(MIP_SSIP, trap_SupervisorSoftwareInterrupt)
+            HANDLE(MIP_STIP, trap_SupervisorTimerInterrupt)
+        }
+#undef HANDLE
+    }
+
+    bool irq = mip_reset != MIP_ALL;
+    if (trap || irq) {
+        bool handled = handle_trap(cpu, ret, irq);
+        if (handled && irq) {
+            // reset MIP value since IRQ was handled
+            write_csr_raw(cpu, CSR_MIP, cur_mip & ~mip_reset);
+        }
+    }
 }
 
 #endif

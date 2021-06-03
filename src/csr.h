@@ -55,9 +55,9 @@ uint read_csr_raw(cpu_t *cpu, uint address) {
         case CSR_SSTATUS: return cpu->csr.data[CSR_MSTATUS] & 0x000de162;
         case CSR_SIE: return cpu->csr.data[CSR_MIE] & 0x222;
         case CSR_SIP: return cpu->csr.data[CSR_MIP] & 0x222;
+        case CSR_TIME: return cpu->clint.mtime_lo;
         case CSR_CYCLE: return cpu->clock;
-        case CSR_MHARTID: return 0; // this has to be 0, always
-        /* case CSR_TIME => self.mmu.get_clint().read_mtime(), */
+        case CSR_MHARTID: return 0;
         default: return cpu->csr.data[address & 0xffff];
     }
 }
@@ -87,6 +87,9 @@ void write_csr_raw(cpu_t *cpu, uint address, uint value) {
         /* CSR_TIME => { */
         /*     self.mmu.get_mut_clint().write_mtime(value); */
         /* }, */
+        case CSR_TIME:
+            // ignore writes
+            break;
         default: cpu->csr.data[address] = value; break;
     };
 }
@@ -95,9 +98,8 @@ void write_csr_raw(cpu_t *cpu, uint address, uint value) {
 uint get_csr(cpu_t *cpu, uint address, ins_ret *ret) {
     if (has_csr_access_privilege(cpu, address)) {
         uint r = read_csr_raw(cpu, address);
-#ifdef VERBOSE
-        printf("CSR read @%03x = %08x\n", address, r);
-#endif
+        if (VERBOSE >= 2)
+            printf("CSR read @%03x = %08x\n", address, r);
         return r;
     } else {
         ret->trap.en = true;
@@ -108,9 +110,8 @@ uint get_csr(cpu_t *cpu, uint address, ins_ret *ret) {
 }
 
 void set_csr(cpu_t *cpu, uint address, uint value, ins_ret *ret) {
-#ifdef VERBOSE
-    printf("CSR write @%03x = %08x\n", address, value);
-#endif
+    if (VERBOSE >= 2)
+        printf("CSR write @%03x = %08x\n", address, value);
     if (has_csr_access_privilege(cpu, address)) {
         bool read_only = ((address >> 10) & 0x3) == 0x3;
         if (read_only) {
@@ -118,10 +119,13 @@ void set_csr(cpu_t *cpu, uint address, uint value, ins_ret *ret) {
             ret->trap.type = trap_IllegalInstruction;
             ret->trap.value = cpu->pc;
         } else {
-            write_csr_raw(cpu, address, value);
             if (address == CSR_SATP) {
                 // TODO: update MMU addressing mode
+                if (VERBOSE >= 1)
+                    printf("WARN: Ignoring write to CSR_SATP\n");
+                return;
             }
+            write_csr_raw(cpu, address, value);
         }
     } else {
         ret->trap.en = true;

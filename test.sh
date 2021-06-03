@@ -19,8 +19,8 @@ function run_test {
 
     popd
 
-    echo "Running: ./rvc \"./riscv-tests/isa/$1\""
-    timeout 5s ./rvc "./riscv-tests/isa/$1"
+    echo "Running: ./rvc -e \"./riscv-tests/isa/$1\""
+    timeout 5s ./rvc -e "./riscv-tests/isa/$1"
 
     if [ $? -gt 0 ]; then
         echo "Test failed!"
@@ -88,7 +88,17 @@ rv32ua-p-amoswap_w
 rv32ua-p-amoxor_w
 rv32mi-p-mcsr
 rv32mi-p-csr
-rv32si-p-csr"
+rv32si-p-csr
+rv32si-p-scall"
+
+# excluded tests:
+# rv32mi-p-scall, successful, but defined as "success if never returning"
+# rv32mi-p-shamt, newer spec says ignoring is OK, so we do that instead
+# rv32mi-p-sbreak, breakpoint, I believe from debug spec, no need
+# rv32mi-p-illegal, requires virtual machine paging? (TVM)
+# rv32mi-p-ma_addr, misaligned address access is ignored (this one passes though?)
+# rv32mi-p-ma_fetch, ignored for same reason, fails though
+
     for t in $TESTS; do
         if [[ "$t" =~ ^# ]]; then continue; fi
         echo
