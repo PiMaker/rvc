@@ -6,8 +6,10 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include "types.h"
 #include "cpu.h"
+#include "uart.h"
 
 #include "../elfy/elfy.h"
 
@@ -29,6 +31,16 @@ uint8_t* get_mmap_ptr(const char* filename) {
 void usage() {
     printf("Usage: rvc (-e <ELF binary>|-b <raw binary>) [-d <device tree binary>] [-v (0|1|2|3)] [-s]\n");
     exit(EXIT_FAILURE);
+}
+
+static cpu_t cpu;
+
+void term(int signum)
+{
+   printf("\n\nCaught signal!\n");
+   cpu_dump(&cpu);
+   printf("\n");
+   exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
@@ -76,9 +88,15 @@ int main(int argc, char *argv[]) {
         memcpy(mem, bin_ptr, get_filesize(bin));
     }
 
-    uint8_t *dtb_ptr = get_mmap_ptr("./dts.dtb");
+    struct sigaction action;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = term;
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
 
-    cpu_t cpu = cpu_init(mem, dtb_ptr);
+    fcntl(0, F_SETFL, O_NONBLOCK);
+
+    cpu = cpu_init(mem, dtb ? get_mmap_ptr(dtb) : NULL);
 
     if (VERBOSE >= 1)
         printf("CPU initialized!\n");
@@ -92,6 +110,11 @@ int main(int argc, char *argv[]) {
         if (VERBOSE >= 3)
             cpu_dump(&cpu);
 
+        /* char input = 0; */
+        /* if (!SINGLE_STEP && !uart_input_value && read(0, &input, 1)) { */
+        /*     uart_input_value = input; */
+        /* } */
+
         if (SINGLE_STEP) {
             fflush(stdout);
             fflush(stdin);
@@ -99,7 +122,7 @@ int main(int argc, char *argv[]) {
             gc: ch = getchar();
             switch (ch) {
                 case '\n': break;
-                case 'c': SINGLE_STEP = 0; break;
+                case 'c': SINGLE_STEP = false; break;
                 default: goto gc;
             }
         }

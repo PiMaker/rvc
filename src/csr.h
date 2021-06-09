@@ -38,7 +38,7 @@ const uint CSR_MTVAL = 0x343;
 const uint CSR_MIP = 0x344;
 const uint _CSR_PMPCFG0 = 0x3a0;
 const uint _CSR_PMPADDR0 = 0x3b0;
-const uint _CSR_MCYCLE = 0xb00;
+const uint CSR_MCYCLE = 0xb00;
 const uint CSR_CYCLE = 0xc00;
 const uint CSR_TIME = 0xc01;
 const uint _CSR_INSERT = 0xc02;
@@ -56,6 +56,7 @@ uint read_csr_raw(cpu_t *cpu, uint address) {
         case CSR_SIE: return cpu->csr.data[CSR_MIE] & 0x222;
         case CSR_SIP: return cpu->csr.data[CSR_MIP] & 0x222;
         case CSR_TIME: return cpu->clint.mtime_lo;
+        case CSR_MCYCLE: return cpu->clock;
         case CSR_CYCLE: return cpu->clock;
         case CSR_MHARTID: return 0;
         default: return cpu->csr.data[address & 0xffff];
@@ -122,7 +123,7 @@ void set_csr(cpu_t *cpu, uint address, uint value, ins_ret *ret) {
             if (address == CSR_SATP) {
                 // TODO: update MMU addressing mode
                 if (VERBOSE >= 1)
-                    printf("WARN: Ignoring write to CSR_SATP\n");
+                    printf("WARN: Ignoring write to CSR_SATP (%08x)\n", value);
                 return;
             }
             write_csr_raw(cpu, address, value);

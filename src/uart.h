@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include "types.h"
 
+static uint uart_input_value = 0;
+
 const uint SHIFT_RBR = 0;
 const uint SHIFT_THR = 8;
 const uint SHIFT_IER = 16;
@@ -39,7 +41,8 @@ void uart_tick(cpu_t *cpu) {
     bool rx_ip = false;
 
     if ((cpu->clock % 0x38400) == 0 && UART_GET1(RBR) == 0) {
-        uint value = 0; // TODO: Add actual input logic
+        uint value = uart_input_value; // TODO: Add actual input logic
+        uart_input_value = 0;
         if (value != 0) {
             UART_SET1(RBR, value);
             UART_SET2(LSR, (UART_GET2(LSR) | LSR_DATA_AVAILABLE));
@@ -53,6 +56,7 @@ void uart_tick(cpu_t *cpu) {
     uint thr = UART_GET1(THR);
     if ((cpu->clock & 0x16) == 0 && thr != 0) {
         printf("%c", (char)thr);
+        fflush(stdout);
         UART_SET1(THR, 0);
         UART_SET2(LSR, (UART_GET2(LSR) | LSR_THR_EMPTY));
         uart_update_iir(cpu);

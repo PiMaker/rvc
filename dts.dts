@@ -4,7 +4,7 @@
     #address-cells = <0x2>;
     #size-cells = <0x2>;
     compatible = "riscv-virtio";
-    model = "riscv-virtio,qemu";
+    model = "generic,rvc";
 
     chosen {
         bootargs = "ttyS0";

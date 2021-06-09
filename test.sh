@@ -19,8 +19,8 @@ function run_test {
 
     popd
 
-    echo "Running: ./rvc -e \"./riscv-tests/isa/$1\""
-    timeout 5s ./rvc -e "./riscv-tests/isa/$1"
+    echo "Running: ./rvc -e \"./riscv-tests/isa/$1\" -v 1"
+    timeout 5s ./rvc -e "./riscv-tests/isa/$1" -v 1
 
     if [ $? -gt 0 ]; then
         echo "Test failed!"

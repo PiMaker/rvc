@@ -5,5 +5,7 @@ rvc
 *.o
 elfy/target
 elfy/Cargo.lock
+rust_payload/target
+rust_payload/Cargo.lock
 fw_payload.*
 *.dtb
