@@ -1,0 +1,857 @@
+From 754aa0d32ec233c212b9624935172c283a49dd11 Mon Sep 17 00:00:00 2001
+From: Stefan <stefan@pimaker.at>
+Date: Wed, 11 Aug 2021 21:58:29 +0200
+Subject: [PATCH] add riscv port
+
+Signed-off-by: Stefan <stefan@pimaker.at>
+---
+ lib/mp-readline/readline.c         |   2 +-
+ lib/utils/gchelper.h               |   2 +
+ lib/utils/gchelper_generic.c       |  33 ++++++++
+ ports/riscv-generic/Makefile       |  84 +++++++++++++++++++
+ ports/riscv-generic/README.md      |  47 +++++++++++
+ ports/riscv-generic/frozentest.mpy | Bin 0 -> 196 bytes
+ ports/riscv-generic/frozentest.py  |   7 ++
+ ports/riscv-generic/main.c         | 125 +++++++++++++++++++++++++++++
+ ports/riscv-generic/mpconfigport.h |  64 +++++++++++++++
+ ports/riscv-generic/mphalport.h    |   5 ++
+ ports/riscv-generic/qstrdefsport.h |   2 +
+ ports/riscv-generic/riscv.S        |  79 ++++++++++++++++++
+ ports/riscv-generic/riscv.ld       |  59 ++++++++++++++
+ ports/riscv-generic/uart_core.c    |  56 +++++++++++++
+ py/nlr.h                           |   6 +-
+ py/nlrriscv.c                      |  89 ++++++++++++++++++++
+ py/py.cmake                        |   1 +
+ py/py.mk                           |   1 +
+ 18 files changed, 660 insertions(+), 2 deletions(-)
+ create mode 100644 ports/riscv-generic/Makefile
+ create mode 100644 ports/riscv-generic/README.md
+ create mode 100644 ports/riscv-generic/frozentest.mpy
+ create mode 100644 ports/riscv-generic/frozentest.py
+ create mode 100644 ports/riscv-generic/main.c
+ create mode 100644 ports/riscv-generic/mpconfigport.h
+ create mode 100644 ports/riscv-generic/mphalport.h
+ create mode 100644 ports/riscv-generic/qstrdefsport.h
+ create mode 100644 ports/riscv-generic/riscv.S
+ create mode 100644 ports/riscv-generic/riscv.ld
+ create mode 100644 ports/riscv-generic/uart_core.c
+ create mode 100644 py/nlrriscv.c
+
+diff --git a/lib/mp-readline/readline.c b/lib/mp-readline/readline.c
+index 296c8aa4a..3ae144008 100644
+--- a/lib/mp-readline/readline.c
++++ b/lib/mp-readline/readline.c
+@@ -182,7 +182,7 @@ int readline_process_char(int c) {
+         } else if (c == CHAR_CTRL_W) {
+             goto backward_kill_word;
+         #endif
+-        } else if (c == '\r') {
++        } else if (c == '\r' || c == '\n') {
+             // newline
+             mp_hal_stdout_tx_str("\r\n");
+             readline_push_history(vstr_null_terminated_str(rl.line) + rl.orig_line_len);
+diff --git a/lib/utils/gchelper.h b/lib/utils/gchelper.h
+index 645ee837f..d32d7d770 100644
+--- a/lib/utils/gchelper.h
++++ b/lib/utils/gchelper.h
+@@ -41,6 +41,8 @@ typedef uintptr_t gc_helper_regs_t[4];
+ typedef uintptr_t gc_helper_regs_t[10];
+ #elif defined(__aarch64__)
+ typedef uintptr_t gc_helper_regs_t[11]; // x19-x29
++#elif defined(__riscv__)
++typedef uintptr_t gc_helper_regs_t[14];
+ #endif
+ 
+ #endif
+diff --git a/lib/utils/gchelper_generic.c b/lib/utils/gchelper_generic.c
+index 3e7e33ab1..77c970342 100644
+--- a/lib/utils/gchelper_generic.c
++++ b/lib/utils/gchelper_generic.c
+@@ -150,6 +150,39 @@ STATIC void gc_helper_get_regs(gc_helper_regs_t arr) {
+     arr[10] = x29;
+ }
+ 
++#elif defined(__riscv__)
++
++STATIC void gc_helper_get_regs(gc_helper_regs_t arr) {
++    const register long x0 asm ("sp");
++    const register long x1 asm ("s0");
++    const register long x2 asm ("s1");
++    const register long x3 asm ("s2");
++    const register long x4 asm ("s3");
++    const register long x5 asm ("s4");
++    const register long x6 asm ("s5");
++    const register long x7 asm ("s6");
++    const register long x8 asm ("s7");
++    const register long x9 asm ("s8");
++    const register long x10 asm ("s9");
++    const register long x11 asm ("s10");
++    const register long x12 asm ("s11");
++    const register long x13 asm ("ra");
++    arr[0] = x0;
++    arr[1] = x1;
++    arr[2] = x2;
++    arr[3] = x3;
++    arr[4] = x4;
++    arr[5] = x5;
++    arr[6] = x6;
++    arr[7] = x7;
++    arr[8] = x8;
++    arr[9] = x9;
++    arr[10] = x10;
++    arr[11] = x11;
++    arr[12] = x12;
++    arr[13] = x13;
++}
++
+ #else
+ 
+ #error "Architecture not supported for gc_helper_get_regs. Set MICROPY_GCREGS_SETJMP to use the fallback implementation."
+diff --git a/ports/riscv-generic/Makefile b/ports/riscv-generic/Makefile
+new file mode 100644
+index 000000000..7efb5561a
+--- /dev/null
++++ b/ports/riscv-generic/Makefile
+@@ -0,0 +1,84 @@
++include ../../py/mkenv.mk
++
++CROSS = 1
++
++# qstr definitions (must come before including py.mk)
++QSTR_DEFS = qstrdefsport.h
++
++# MicroPython feature configurations
++MICROPY_ROM_TEXT_COMPRESSION ?= 0
++
++# include py core make definitions
++include $(TOP)/py/py.mk
++
++ifeq ($(CROSS), 1)
++CROSS_COMPILE ?= ../../../../buildroot-2021.05/output/host/bin/riscv32-buildroot-linux-gnu-
++endif
++
++INC += -I.
++INC += -I$(TOP)
++INC += -I$(BUILD)
++
++CFLAGS = $(INC) -march=rv32ima -mabi=ilp32 -Wall -Werror -std=c99 -nostdlib $(COPT) -fno-stack-protector -fno-pie
++LDFLAGS += -nostdlib -static
++LDFLAGS += -T./riscv.ld
++CSUPEROPT = -Os # save some code space
++
++# LIBS = -L../../../buildroot-2021.05.1/output/host/lib/gcc/riscv32-buildroot-linux-gnu/10.3.0 -L../../../buildroot-2021.05.1/output/host/riscv32-buildroot-linux-gnu/sysroot/usr/lib -lgcc -lm -lc
++
++CFLAGS += -Os -DNDEBUG
++CFLAGS += -fdata-sections -ffunction-sections
++
++# Flags for optional C++ source code
++CXXFLAGS += $(filter-out -std=c99,$(CFLAGS))
++CXXFLAGS += $(CXXFLAGS_MOD)
++
++# Flags for user C modules
++CFLAGS += $(CFLAGS_MOD)
++LDFLAGS += $(LDFLAGS_MOD)
++
++SRC_ASM = riscv.S
++ASFLAGS += -I../../../opensbi/include
++
++SRC_C = \
++	main.c \
++	uart_core.c \
++	lib/utils/printf.c \
++	lib/mp-readline/readline.c \
++	lib/utils/pyexec.c \
++	lib/utils/stdout_helpers.c \
++	$(BUILD)/_frozen_mpy.c \
++
++SRC_C += lib/libc/string0.c
++SRC_C += $(SRC_MOD)
++SRC_CXX += $(SRC_MOD_CXX)
++SRC_QSTR += $(SRC_MOD) $(SRC_MOD_CXX)
++
++OBJ += $(PY_CORE_O) $(addprefix $(BUILD)/, $(SRC_C:.c=.o))
++OBJ += $(addprefix $(BUILD)/, $(SRC_CXX:.cpp=.o))
++OBJ += riscv.o
++
++all: $(BUILD)/firmware.bin
++
++$(BUILD)/_frozen_mpy.c: frozentest.mpy $(BUILD)/genhdr/qstrdefs.generated.h
++	$(ECHO) "MISC freezing bytecode"
++	$(Q)$(TOP)/tools/mpy-tool.py -f -q $(BUILD)/genhdr/qstrdefs.preprocessed.h -mlongint-impl=none $< > $@
++
++$(BUILD)/firmware.elf: $(OBJ)
++	$(ECHO) "LINK $@"
++	$(Q)$(LD) $(LDFLAGS) -o $@ $^ $(LIBS)
++	$(Q)$(SIZE) $@
++
++$(BUILD)/firmware.bin: $(BUILD)/firmware.elf
++	$(Q)$(OBJCOPY) -O binary \
++		-j .text \
++		-j '.text.*' \
++		-j .rodata \
++		-j '.rodata.*' \
++		-j .srodata \
++		-j '.srodata.*' \
++		-j .data \
++		-j '.data.*' \
++		$^ $(BUILD)/firmware.bin
++
++include $(TOP)/py/mkrules.mk
+diff --git a/ports/riscv-generic/README.md b/ports/riscv-generic/README.md
+new file mode 100644
+index 000000000..356fc4b3e
+--- /dev/null
++++ b/ports/riscv-generic/README.md
+@@ -0,0 +1,47 @@
++# The minimal port
++
++This port is intended to be a minimal MicroPython port that actually runs.
++It can run under Linux (or similar) and on any STM32F4xx MCU (eg the pyboard).
++
++## Building and running Linux version
++
++By default the port will be built for the host machine:
++
++    $ make
++
++To run the executable and get a basic working REPL do:
++
++    $ make run
++
++## Building for an STM32 MCU
++
++The Makefile has the ability to build for a Cortex-M CPU, and by default
++includes some start-up code for an STM32F4xx MCU and also enables a UART
++for communication.  To build:
++
++    $ make CROSS=1
++
++If you previously built the Linux version, you will need to first run
++`make clean` to get rid of incompatible object files.
++
++Building will produce the build/firmware.dfu file which can be programmed
++to an MCU using:
++
++    $ make CROSS=1 deploy
++
++This version of the build will work out-of-the-box on a pyboard (and
++anything similar), and will give you a MicroPython REPL on UART1 at 9600
++baud.  Pin PA13 will also be driven high, and this turns on the red LED on
++the pyboard.
++
++## Building without the built-in MicroPython compiler
++
++This minimal port can be built with the built-in MicroPython compiler
++disabled.  This will reduce the firmware by about 20k on a Thumb2 machine,
++and by about 40k on 32-bit x86.  Without the compiler the REPL will be
++disabled, but pre-compiled scripts can still be executed.
++
++To test out this feature, change the `MICROPY_ENABLE_COMPILER` config
++option to "0" in the mpconfigport.h file in this directory.  Then
++recompile and run the firmware and it will execute the frozentest.py
++file.
+diff --git a/ports/riscv-generic/frozentest.mpy b/ports/riscv-generic/frozentest.mpy
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a89194a1048700453ca5b682c972e131a878610
+GIT binary patch
+literal 196
+zcmeZeWs+BD3K0-vV3$fO%CAbzD@iRb(JQFb)X>n-)?g51s1{%=4X89>j07^38K5*H
+zlxBj^O1s|A5(P3FocJ5U#h5aIN(Dhm8lQ%@Tz7t59~qd;%uuY9sF0JNm#$D;Qj`g#
+zN-`2l6f%ny^74Tc(AuKB)RbbiL=@?a#A1cgyv*eMlvIUt8_#Vzw^<=MBeAGBi94wh
+M=uibiBV!Xr0D7G~UjP6A
+
+literal 0
+HcmV?d00001
+
+diff --git a/ports/riscv-generic/frozentest.py b/ports/riscv-generic/frozentest.py
+new file mode 100644
+index 000000000..78cdd60bf
+--- /dev/null
++++ b/ports/riscv-generic/frozentest.py
+@@ -0,0 +1,7 @@
++print("uPy")
++print("a long string that is not interned")
++print("a string that has unicode αβγ chars")
++print(b"bytes 1234\x01")
++print(123456789)
++for i in range(4):
++    print(i)
+diff --git a/ports/riscv-generic/main.c b/ports/riscv-generic/main.c
+new file mode 100644
+index 000000000..7f040f5f5
+--- /dev/null
++++ b/ports/riscv-generic/main.c
+@@ -0,0 +1,125 @@
++#include <stdint.h>
++#include <stdio.h>
++#include <string.h>
++
++#include "py/compile.h"
++#include "py/runtime.h"
++#include "py/repl.h"
++#include "py/gc.h"
++#include "py/mperrno.h"
++#include "py/stackctrl.h"
++#include "lib/utils/pyexec.h"
++
++#if MICROPY_ENABLE_COMPILER
++void do_str(const char *src, mp_parse_input_kind_t input_kind) {
++    nlr_buf_t nlr;
++    if (nlr_push(&nlr) == 0) {
++        mp_lexer_t *lex = mp_lexer_new_from_str_len(MP_QSTR__lt_stdin_gt_, src, strlen(src), 0);
++        qstr source_name = lex->source_name;
++        mp_parse_tree_t parse_tree = mp_parse(lex, input_kind);
++        mp_obj_t module_fun = mp_compile(&parse_tree, source_name, true);
++        mp_call_function_0(module_fun);
++        nlr_pop();
++    } else {
++        // uncaught exception
++        mp_obj_print_exception(&mp_plat_print, (mp_obj_t)nlr.ret_val);
++    }
++}
++#endif
++
++static void *stack_top;
++#if MICROPY_ENABLE_GC
++static char heap[8192*1024]; // 8 MB
++#endif
++
++int main(int argc, char **argv) {
++
++    __asm("sw sp, %0\n" : "=m" (stack_top));
++
++    mp_stack_set_top(stack_top);
++    mp_stack_set_limit(8192*1024); // 8 MB
++
++    #if MICROPY_ENABLE_GC
++    gc_init(heap, heap + sizeof(heap));
++    #endif
++    mp_init();
++    pyexec_friendly_repl();
++    mp_deinit();
++    return 0;
++}
++
++#if MICROPY_ENABLE_GC
++void gc_collect(void) {
++    void *sregs[12];
++    void *sp;
++
++    gc_collect_start();
++
++    /* push callee-save registers to
++     * stack before sweeping it */
++    __asm(
++        "sw	s0,   0+%1 \n"
++        "sw	s1,   4+%1 \n"
++        "sw	s2,   8+%1 \n"
++        "sw	s3,  12+%1 \n"
++        "sw	s4,  16+%1 \n"
++        "sw	s5,  20+%1 \n"
++        "sw	s6,  24+%1 \n"
++        "sw	s7,  28+%1 \n"
++        "sw	s8,  32+%1 \n"
++        "sw	s9,  36+%1 \n"
++        "sw	s10, 40+%1 \n"
++        "sw	s11, 44+%1 \n"
++        "mv	%0,  sp    \n"
++        : "=r" (sp), "=o" (sregs)
++        );
++
++    gc_collect_root(sp, stack_top - sp);
++    gc_collect_end();
++}
++#endif
++
++mp_lexer_t *mp_lexer_new_from_file(const char *filename) {
++    mp_raise_OSError(MP_ENOENT);
++}
++
++mp_import_stat_t mp_import_stat(const char *path) {
++    return MP_IMPORT_STAT_NO_EXIST;
++}
++
++mp_obj_t mp_builtin_open(size_t n_args, const mp_obj_t *args, mp_map_t *kwargs) {
++    return mp_const_none;
++}
++MP_DEFINE_CONST_FUN_OBJ_KW(mp_builtin_open_obj, 1, mp_builtin_open);
++
++void nlr_jump_fail(void *val) {
++    while (1) {
++        ;
++    }
++}
++
++void NORETURN __fatal_error(const char *msg) {
++    while (1) {
++        ;
++    }
++}
++
++#ifndef NDEBUG
++void MP_WEAK __assert_func(const char *file, int line, const char *func, const char *expr) {
++    printf("Assertion '%s' failed, at file %s:%d\n", expr, file, line);
++    __fatal_error("Assertion failed");
++}
++void MP_WEAK __assert_fail(const char *expr, const char *file, unsigned int line, const char *func) {
++    printf("Assertion '%s' failed, at file %s:%d\n", expr, file, line);
++    __fatal_error("Assertion failed");
++}
++#endif
++
++void NORETURN c_start(void) {
++    // now that we have a basic system up and running we can call main
++    main(0, NULL);
++
++    // we must not return
++    for (;;) {
++    }
++}
+diff --git a/ports/riscv-generic/mpconfigport.h b/ports/riscv-generic/mpconfigport.h
+new file mode 100644
+index 000000000..b9fcef6f4
+--- /dev/null
++++ b/ports/riscv-generic/mpconfigport.h
+@@ -0,0 +1,64 @@
++#include <stdint.h>
++
++// options to control how MicroPython is built
++
++// You can disable the built-in MicroPython compiler by setting the following
++// config option to 0.  If you do this then you won't get a REPL prompt, but you
++// will still be able to execute pre-compiled scripts, compiled with mpy-cross.
++#define MICROPY_ENABLE_COMPILER     (1)
++
++#define MICROPY_QSTR_BYTES_IN_HASH  (1)
++#define MICROPY_ALLOC_PATH_MAX      (256)
++#define MICROPY_ALLOC_PARSE_CHUNK_INIT (16)
++#define MICROPY_COMP_CONST          (0)
++#define MICROPY_COMP_DOUBLE_TUPLE_ASSIGN (0)
++#define MICROPY_ENABLE_GC           (1)
++#define MICROPY_GC_ALLOC_THRESHOLD  (0)
++#define MICROPY_HELPER_REPL         (1)
++#define MICROPY_ERROR_REPORTING     (MICROPY_ERROR_REPORTING_TERSE)
++#define MICROPY_BUILTIN_METHOD_CHECK_SELF_ARG (0)
++#define MICROPY_PY_ASYNC_AWAIT      (0)
++#define MICROPY_PY_ASSIGN_EXPR      (0)
++#define MICROPY_PY_BUILTINS_BYTEARRAY (0)
++#define MICROPY_PY_BUILTINS_DICT_FROMKEYS (0)
++#define MICROPY_PY_BUILTINS_ENUMERATE (0)
++#define MICROPY_PY_BUILTINS_FILTER  (0)
++#define MICROPY_PY_BUILTINS_REVERSED (0)
++#define MICROPY_PY_BUILTINS_SET     (0)
++#define MICROPY_PY_BUILTINS_SLICE   (0)
++#define MICROPY_PY_BUILTINS_PROPERTY (0)
++#define MICROPY_PY_BUILTINS_MIN_MAX (0)
++#define MICROPY_PY_BUILTINS_STR_COUNT (0)
++#define MICROPY_PY_BUILTINS_STR_OP_MODULO (0)
++#define MICROPY_PY___FILE__         (0)
++#define MICROPY_PY_GC               (0)
++#define MICROPY_PY_ARRAY            (0)
++#define MICROPY_PY_ATTRTUPLE        (0)
++#define MICROPY_PY_COLLECTIONS      (0)
++#define MICROPY_PY_IO               (0)
++#define MICROPY_PY_STRUCT           (0)
++#define MICROPY_PY_SYS              (0)
++#define MICROPY_MODULE_FROZEN_MPY   (1)
++#define MICROPY_CPYTHON_COMPAT      (0)
++#define MICROPY_MODULE_GETATTR      (0)
++
++// type definitions for the specific machine
++
++typedef intptr_t mp_int_t; // must be pointer size
++typedef uintptr_t mp_uint_t; // must be pointer size
++typedef long mp_off_t;
++
++// extra built in names to add to the global namespace
++#define MICROPY_PORT_BUILTINS \
++    { MP_ROM_QSTR(MP_QSTR_open), MP_ROM_PTR(&mp_builtin_open_obj) },
++
++// We need to provide a declaration/definition of alloca()
++#include <alloca.h>
++
++#define MICROPY_HW_BOARD_NAME "minimal"
++#define MICROPY_HW_MCU_NAME "generic,rvc"
++
++#define MP_STATE_PORT MP_STATE_VM
++
++#define MICROPY_PORT_ROOT_POINTERS \
++    const char *readline_hist[8];
+diff --git a/ports/riscv-generic/mphalport.h b/ports/riscv-generic/mphalport.h
+new file mode 100644
+index 000000000..5130d19a2
+--- /dev/null
++++ b/ports/riscv-generic/mphalport.h
+@@ -0,0 +1,5 @@
++static inline mp_uint_t mp_hal_ticks_ms(void) {
++    return 0;
++}
++static inline void mp_hal_set_interrupt_char(char c) {
++}
+diff --git a/ports/riscv-generic/qstrdefsport.h b/ports/riscv-generic/qstrdefsport.h
+new file mode 100644
+index 000000000..00d3e2ae3
+--- /dev/null
++++ b/ports/riscv-generic/qstrdefsport.h
+@@ -0,0 +1,2 @@
++// qstrs specific to this port
++// *FORMAT-OFF*
+diff --git a/ports/riscv-generic/riscv.S b/ports/riscv-generic/riscv.S
+new file mode 100644
+index 000000000..9cc2c5474
+--- /dev/null
++++ b/ports/riscv-generic/riscv.S
+@@ -0,0 +1,79 @@
++/*
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2019 Western Digital Corporation or its affiliates.
++ *
++ * Authors:
++ *   Anup Patel <anup.patel@wdc.com>
++ */
++
++#include "sbi/riscv_encoding.h"
++#define __ASM_STR(x)	x
++
++#if __riscv_xlen == 64
++#define __REG_SEL(a, b)		__ASM_STR(a)
++#define RISCV_PTR		.dword
++#elif __riscv_xlen == 32
++#define __REG_SEL(a, b)		__ASM_STR(b)
++#define RISCV_PTR		.word
++#else
++#error "Unexpected __riscv_xlen"
++#endif
++
++#define REG_L		__REG_SEL(ld, lw)
++#define REG_S		__REG_SEL(sd, sw)
++
++	.section .entry, "ax", %progbits
++	.align 3
++	.globl _start
++_start:
++	/* Pick one hart to run the main boot sequence */
++	lla	a3, _hart_lottery
++	li	a2, 1
++	amoadd.w a3, a2, (a3)
++	bnez	a3, _start_hang
++
++	/* Save a0 and a1 */
++	lla	a3, _boot_a0
++	REG_S	a0, 0(a3)
++	lla	a3, _boot_a1
++	REG_S	a1, 0(a3)
++
++_start_warm:
++	/* Disable and clear all interrupts */
++	csrw	CSR_SIE, zero
++	csrw	CSR_SIP, zero
++
++	/* Setup exception vectors */
++	lla	a3, _start_hang
++	csrw	CSR_STVEC, a3
++
++	/* Setup stack */
++	lla	sp, _estack
++
++	/* Jump to C main */
++	lla	a3, _boot_a0
++	REG_L	a0, 0(a3)
++	lla	a3, _boot_a1
++	REG_L	a1, 0(a3)
++	call	c_start
++
++	/* We don't expect to reach here hence just hang */
++	j	_start_hang
++
++	.section .entry, "ax", %progbits
++	.align 3
++	.globl _start_hang
++_start_hang:
++	wfi
++	j	_start_hang
++
++	.section .entry, "ax", %progbits
++	.align	3
++_hart_lottery:
++	RISCV_PTR	0
++_boot_a0:
++	RISCV_PTR	0
++_boot_a1:
++	RISCV_PTR	0
++
+diff --git a/ports/riscv-generic/riscv.ld b/ports/riscv-generic/riscv.ld
+new file mode 100644
+index 000000000..28ef02f64
+--- /dev/null
++++ b/ports/riscv-generic/riscv.ld
+@@ -0,0 +1,59 @@
++/*
++    GNU linker script for STM32F405
++*/
++
++/* Specify the memory areas */
++MEMORY
++{
++    RAM : ORIGIN = 0x80400000, LENGTH = 32M
++}
++
++/* top end of the stack */
++_estack = ORIGIN(RAM) + LENGTH(RAM);
++
++/* define output sections */
++SECTIONS
++{
++    /* The program code and other data goes into FLASH */
++    .text :
++    {
++        . = ALIGN(4);
++        *(.entry)
++        *(.text)           /* .text sections (code) */
++        *(.text*)          /* .text* sections (code) */
++        *(.rodata)         /* .rodata sections (constants, strings, etc.) */
++        *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
++
++        . = ALIGN(4);
++        _etext = .;        /* define a global symbol at end of code */
++        _sidata = _etext;  /* This is used by the startup in order to initialize the .data secion */
++    } >RAM
++
++    /* This is the initialized data section
++    The program executes knowing that the data is in the RAM
++    but the loader puts the initial values in the FLASH (inidata).
++    It is one task of the startup to copy the initial values from FLASH to RAM. */
++    .data : AT ( _sidata )
++    {
++        . = ALIGN(4);
++        _sdata = .;        /* create a global symbol at data start; used by startup code in order to initialise the .data section in RAM */
++        *(.data)           /* .data sections */
++        *(.data*)          /* .data* sections */
++
++        . = ALIGN(4);
++        _edata = .;        /* define a global symbol at data end; used by startup code in order to initialise the .data section in RAM */
++    } >RAM
++
++    /* Uninitialized data section */
++    .bss :
++    {
++        . = ALIGN(4);
++        _sbss = .;         /* define a global symbol at bss start; used by startup code */
++        *(.bss)
++        *(.bss*)
++        *(COMMON)
++
++        . = ALIGN(4);
++        _ebss = .;         /* define a global symbol at bss end; used by startup code */
++    } >RAM
++}
+diff --git a/ports/riscv-generic/uart_core.c b/ports/riscv-generic/uart_core.c
+new file mode 100644
+index 000000000..cca9a3f9c
+--- /dev/null
++++ b/ports/riscv-generic/uart_core.c
+@@ -0,0 +1,56 @@
++#include "py/mpconfig.h"
++
++/*
++ * Core UART functions to implement for a port
++ */
++
++/* SBI Extension IDs */
++#define SBI_EXT_0_1_SET_TIMER			0x0
++#define SBI_EXT_0_1_CONSOLE_PUTCHAR		0x1
++#define SBI_EXT_0_1_CONSOLE_GETCHAR		0x2
++#define SBI_EXT_0_1_CLEAR_IPI			0x3
++#define SBI_EXT_0_1_SEND_IPI			0x4
++#define SBI_EXT_0_1_REMOTE_FENCE_I		0x5
++#define SBI_EXT_0_1_REMOTE_SFENCE_VMA		0x6
++#define SBI_EXT_0_1_REMOTE_SFENCE_VMA_ASID	0x7
++#define SBI_EXT_0_1_SHUTDOWN			0x8
++
++#define SBI_ECALL(__num, __a0, __a1, __a2)                                    \
++	({                                                                    \
++		register unsigned long a0 __asm("a0") = (unsigned long)(__a0);  \
++		register unsigned long a1 __asm("a1") = (unsigned long)(__a1);  \
++		register unsigned long a2 __asm("a2") = (unsigned long)(__a2);  \
++		register unsigned long a7 __asm("a7") = (unsigned long)(__num); \
++		__asm volatile("ecall"                                          \
++			     : "+r"(a0)                                       \
++			     : "r"(a1), "r"(a2), "r"(a7)                      \
++			     : "memory");                                     \
++		a0;                                                           \
++	})
++
++#define SBI_ECALL_0(__num) SBI_ECALL(__num, 0, 0, 0)
++#define SBI_ECALL_1(__num, __a0) SBI_ECALL(__num, __a0, 0, 0)
++#define SBI_ECALL_2(__num, __a0, __a1) SBI_ECALL(__num, __a0, __a1, 0)
++
++#define sbi_ecall_console_putc(c) SBI_ECALL_1(SBI_EXT_0_1_CONSOLE_PUTCHAR, (c))
++#define sbi_ecall_console_getc() SBI_ECALL_0(SBI_EXT_0_1_CONSOLE_GETCHAR)
++
++static inline void sbi_ecall_console_puts(const char *str)
++{
++	while (str && *str)
++		sbi_ecall_console_putc(*str++);
++}
++
++// Receive single character
++int mp_hal_stdin_rx_chr(void) {
++    unsigned char c = 0;
++    while (!(c = sbi_ecall_console_getc())) {}
++    return c;
++}
++
++// Send string of given length
++void mp_hal_stdout_tx_strn(const char *str, mp_uint_t len) {
++    while (len--) {
++        sbi_ecall_console_putc(*str++);
++    }
++}
+diff --git a/py/nlr.h b/py/nlr.h
+index 9f12ede9c..d760bbf27 100644
+--- a/py/nlr.h
++++ b/py/nlr.h
+@@ -42,6 +42,7 @@
+ #define MICROPY_NLR_NUM_REGS_AARCH64        (13)
+ #define MICROPY_NLR_NUM_REGS_XTENSA         (10)
+ #define MICROPY_NLR_NUM_REGS_XTENSAWIN      (17)
++#define MICROPY_NLR_NUM_REGS_RISCV          (14)
+ 
+ // *FORMAT-OFF*
+ 
+@@ -83,8 +84,11 @@
+     #define MICROPY_NLR_POWERPC (1)
+     // this could be less but using 128 for safety
+     #define MICROPY_NLR_NUM_REGS (128)
++#elif defined(__riscv)
++    #define MICROPY_NLR_RISCV (1)
++    #define MICROPY_NLR_NUM_REGS (MICROPY_NLR_NUM_REGS_RISCV)
+ #else
+-    #define MICROPY_NLR_SETJMP (1)
++    #error "NO SETJMP PLZ"
+     //#warning "No native NLR support for this arch, using setjmp implementation"
+ #endif
+ #endif
+diff --git a/py/nlrriscv.c b/py/nlrriscv.c
+new file mode 100644
+index 000000000..685ea5761
+--- /dev/null
++++ b/py/nlrriscv.c
+@@ -0,0 +1,89 @@
++/*
++ * This file is part of the MicroPython project, http://micropython.org/
++ *
++ * The MIT License (MIT)
++ *
++ * Copyright (c) 2019 Emil Renner Berthing
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ */
++
++#include "py/mpstate.h"
++
++#if MICROPY_NLR_RISCV
++
++#undef nlr_push
++
++// For reference, riscv callee save regs are:
++//      s0-s11, ra and sp
++
++__attribute__((naked)) unsigned int nlr_push(nlr_buf_t *nlr) {
++
++    __asm volatile (
++        "sw    s0,     0+%0    \n" // store s0 into nlr->regs
++        "sw    s1,     4+%0    \n" // store s1 into nlr->regs
++        "sw    s2,     8+%0    \n" // store s2 into nlr->regs
++        "sw    s3,    12+%0    \n" // store s3 into nlr->regs
++        "sw    s4,    16+%0    \n" // store s4 into nlr->regs
++        "sw    s5,    20+%0    \n" // store s5 into nlr->regs
++        "sw    s6,    24+%0    \n" // store s6 into nlr->regs
++        "sw    s7,    28+%0    \n" // store s7 into nlr->regs
++        "sw    s8,    32+%0    \n" // store s8 into nlr->regs
++        "sw    s9,    36+%0    \n" // store s9 into nlr->regs
++        "sw    s10,   40+%0    \n" // store s10 into nlr->regs
++        "sw    s11,   44+%0    \n" // store s11 into nlr->regs
++        "sw    ra,    48+%0    \n" // store ra into nlr->regs
++        "sw    sp,    52+%0    \n" // store sp into nlr->regs
++        "tail  nlr_push_tail   \n" // do the rest in C
++        : "=o" (nlr->regs)
++        );
++}
++
++NORETURN void nlr_jump(void *val) {
++    MP_NLR_JUMP_HEAD(val, top)
++
++    /* WARNING: if the above macro grows to call a function
++     * (that returns) after loading top, the compiler might
++     * decide to stash top in an s-register and the assembly
++     * below will break.
++     */
++    __asm volatile (
++        "lw    s0,     0+%0    \n" // load s0 from top->regs
++        "lw    s1,     4+%0    \n" // load s1 from top->regs
++        "lw    s2,     8+%0    \n" // load s2 from top->regs
++        "lw    s3,    12+%0    \n" // load s3 from top->regs
++        "lw    s4,    16+%0    \n" // load s4 from top->regs
++        "lw    s5,    20+%0    \n" // load s5 from top->regs
++        "lw    s6,    24+%0    \n" // load s6 from top->regs
++        "lw    s7,    28+%0    \n" // load s7 from top->regs
++        "lw    s8,    32+%0    \n" // load s8 from top->regs
++        "lw    s9,    36+%0    \n" // load s9 from top->regs
++        "lw    s10,   40+%0    \n" // load s10 from top->regs
++        "lw    s11,   44+%0    \n" // load s11 from top->regs
++        "lw    ra,    48+%0    \n" // load ra from top->regs
++        "lw    sp,    52+%0    \n" // load sp from top->regs
++        "li    a0,   1         \n" // return 1, non-local return
++        "ret                   \n" // return
++        :: "o" (top->regs)
++        );
++
++    MP_UNREACHABLE
++}
++
++#endif // MICROPY_NLR_RISCV32
+diff --git a/py/py.cmake b/py/py.cmake
+index 2b5d437b5..ae94bda53 100644
+--- a/py/py.cmake
++++ b/py/py.cmake
+@@ -59,6 +59,7 @@ set(MICROPY_SOURCE_PY
+     ${MICROPY_PY_DIR}/nlrx64.c
+     ${MICROPY_PY_DIR}/nlrx86.c
+     ${MICROPY_PY_DIR}/nlrxtensa.c
++    ${MICROPY_PY_DIR}/nlrriscv.c
+     ${MICROPY_PY_DIR}/obj.c
+     ${MICROPY_PY_DIR}/objarray.c
+     ${MICROPY_PY_DIR}/objattrtuple.c
+diff --git a/py/py.mk b/py/py.mk
+index 59abc8f50..c89253f7d 100644
+--- a/py/py.mk
++++ b/py/py.mk
+@@ -61,6 +61,7 @@ PY_CORE_O_BASENAME = $(addprefix py/,\
+ 	nlrpowerpc.o \
+ 	nlrxtensa.o \
+ 	nlrsetjmp.o \
++	nlrriscv.o \
+ 	malloc.o \
+ 	gc.o \
+ 	pystack.o \
+-- 
+2.32.0
+

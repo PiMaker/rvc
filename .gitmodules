@@ -13,3 +13,6 @@
 [submodule "linux"]
 	path = linux
 	url = git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+[submodule "mprv/micropython"]
+	path = mprv/micropython
+	url = https://github.com/micropython/micropython
