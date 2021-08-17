@@ -1,0 +1,26 @@
+From a553b141d5519d5429e67d28981177b4303eaffb Mon Sep 17 00:00:00 2001
+From: Stefan <stefan@pimaker.at>
+Date: Thu, 12 Aug 2021 16:11:48 +0200
+Subject: [PATCH] don't zero BSS
+
+Signed-off-by: Stefan <stefan@pimaker.at>
+---
+ firmware/fw_base.S | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/firmware/fw_base.S b/firmware/fw_base.S
+index 1569e60..0f499d7 100644
+--- a/firmware/fw_base.S
++++ b/firmware/fw_base.S
+@@ -222,7 +222,7 @@ _relocate_done:
+ _bss_zero:
+ 	REG_S	zero, (s4)
+ 	add	s4, s4, __SIZEOF_POINTER__
+-	blt	s4, s5, _bss_zero
++	/* blt	s4, s5, _bss_zero */ /* ZERO IS DEFAULT! */
+ 
+ 	/* Setup temporary trap handler */
+ 	lla	s4, _start_hang
+-- 
+2.32.0
+
