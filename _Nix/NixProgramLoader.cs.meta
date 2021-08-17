@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: b54997385532bd84d88ee0b5ac0c37d1
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - vm_mat: {fileID: 2100000, guid: 8d3d8704dc0acc64ababc7c4712d3cb7, type: 2}
+  - TexR: {instanceID: 0}
+  - TexG: {instanceID: 0}
+  - TexB: {instanceID: 0}
+  - TexA: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

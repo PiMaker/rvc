@@ -2,6 +2,7 @@ compile_commands.json
 .ccls-cache
 elfy/.ccls-cache
 rvc
+!rvc/
 *.o
 elfy/target
 elfy/Cargo.lock
@@ -10,6 +11,7 @@ rust_payload/Cargo.lock
 fw_payload.*
 *.dtb
 *.bmp
+!_Nix/**/*.bmp
 *.bin
 *.elf
 *.img
