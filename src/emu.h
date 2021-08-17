@@ -6,6 +6,7 @@
 #include "types.h"
 #include "ins.h"
 #include "mem.h"
+#include "mmu.h"
 #include "trap.h"
 #include "csr.h"
 
@@ -32,52 +33,70 @@ DEF(addi, FormatI, { // rv32i
     WR_RD(AS_SIGNED(cpu->xreg[ins.rs1]) + AS_SIGNED(ins.imm));
 })
 DEF(amoswap_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
-    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2]);
     WR_RD(tmp)
 })
 DEF(amoadd_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
-    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] + tmp);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2] + tmp);
     WR_RD(tmp)
 })
 DEF(amoxor_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
-    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] ^ tmp);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2] ^ tmp);
     WR_RD(tmp)
 })
 DEF(amoand_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
-    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] & tmp);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2] & tmp);
     WR_RD(tmp)
 })
 DEF(amoor_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
-    mem_set_word(cpu, cpu->xreg[ins.rs1], cpu->xreg[ins.rs2] | tmp);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2] | tmp);
     WR_RD(tmp)
 })
 DEF(amomin_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
     uint sec = cpu->xreg[ins.rs2];
-    mem_set_word(cpu, cpu->xreg[ins.rs1], AS_SIGNED(sec) < AS_SIGNED(tmp) ? sec : tmp);
+    mem_set_word(cpu, addr, AS_SIGNED(sec) < AS_SIGNED(tmp) ? sec : tmp);
     WR_RD(tmp)
 })
 DEF(amomax_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
     uint sec = cpu->xreg[ins.rs2];
-    mem_set_word(cpu, cpu->xreg[ins.rs1], AS_SIGNED(sec) > AS_SIGNED(tmp) ? sec : tmp);
+    mem_set_word(cpu, addr, AS_SIGNED(sec) > AS_SIGNED(tmp) ? sec : tmp);
     WR_RD(tmp)
 })
 DEF(amominu_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
     uint sec = cpu->xreg[ins.rs2];
-    mem_set_word(cpu, cpu->xreg[ins.rs1], sec < tmp ? sec : tmp);
+    mem_set_word(cpu, addr, sec < tmp ? sec : tmp);
     WR_RD(tmp)
 })
 DEF(amomaxu_w, FormatR, { // rv32a
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
     uint sec = cpu->xreg[ins.rs2];
-    mem_set_word(cpu, cpu->xreg[ins.rs1], sec > tmp ? sec : tmp);
+    mem_set_word(cpu, addr, sec > tmp ? sec : tmp);
     WR_RD(tmp)
 })
 DEF(and, FormatR, { // rv32i
@@ -179,20 +198,23 @@ DEF(divu, FormatR, { // rv32m
     WR_RD(result)
 })
 DEF(ebreak, FormatEmpty, { // system
-    // unnecessary?
+    printf("EBREAK!\n");
+    VERBOSE=4;
+    SINGLE_STEP=1;
 })
 DEF(ecall, FormatEmpty, { // system
-    if (cpu->xreg[17] == 93) {
-        // EXIT CALL
-        uint status = cpu->xreg[10] >> 1;
-        printf("ecall EXIT = %d (0x%x)\n", status, status);
-        exit(status);
-    }
+    /* if (cpu->xreg[17] == 93) { */
+    /*     // EXIT CALL */
+    /*     uint status = cpu->xreg[10] >> 1; */
+    /*     printf("ecall EXIT = %d (0x%x)\n", status, status); */
+    /*     exit(status); */
+    /* } */
 
     ret->trap.en = true;
     ret->trap.value = cpu->pc;
     if (cpu->csr.privilege == PRIV_USER) {
         ret->trap.type = trap_EnvironmentCallFromUMode;
+        /* printf("SYSCALL! nr=%d @0x%08x\n", cpu->xreg[17], cpu->pc); */
     } else if (cpu->csr.privilege == PRIV_SUPERVISOR) {
         ret->trap.type = trap_EnvironmentCallFromSMode;
     } else { // PRIV_MACHINE
@@ -214,23 +236,32 @@ DEF(jalr, FormatI, { // rv32i
     WR_PC(cpu->xreg[ins.rs1] + ins.imm);
 })
 DEF(lb, FormatI, { // rv32i
-    uint tmp = sign_extend(mem_get_byte(cpu, cpu->xreg[ins.rs1] + ins.imm), 8);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_READ);
+    if (ret->trap.en) return;
+    uint tmp = sign_extend(mem_get_byte(cpu, addr), 8);
     WR_RD(tmp)
 })
 DEF(lbu, FormatI, { // rv32i
-    uint tmp = mem_get_byte(cpu, cpu->xreg[ins.rs1] + ins.imm);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_READ);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_byte(cpu, addr);
     WR_RD(tmp)
 })
 DEF(lh, FormatI, { // rv32i
-    uint tmp = sign_extend(mem_get_half_word(cpu, cpu->xreg[ins.rs1] + ins.imm), 16);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_READ);
+    if (ret->trap.en) return;
+    uint tmp = sign_extend(mem_get_half_word(cpu, addr), 16);
     WR_RD(tmp)
 })
 DEF(lhu, FormatI, { // rv32i
-    uint tmp = mem_get_half_word(cpu, cpu->xreg[ins.rs1] + ins.imm);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_READ);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_half_word(cpu, addr);
     WR_RD(tmp)
 })
 DEF(lr_w, FormatR, { // rv32a
-    uint addr = cpu->xreg[ins.rs1];
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_READ);
+    if (ret->trap.en) return;
     uint tmp = mem_get_word(cpu, addr);
     cpu->reservation_en = true;
     cpu->reservation_addr = addr;
@@ -241,7 +272,9 @@ DEF(lui, FormatU, { // rv32i
 })
 DEF(lw, FormatI, { // rv32i
     // would need sign extend for xlen > 32
-    uint tmp = mem_get_word(cpu, cpu->xreg[ins.rs1] + ins.imm);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_READ);
+    if (ret->trap.en) return;
+    uint tmp = mem_get_word(cpu, addr);
     WR_RD(tmp)
 })
 DEF(mret, FormatEmpty, { // system
@@ -305,11 +338,13 @@ DEF(remu, FormatR, { // rv32m
     WR_RD(result)
 })
 DEF(sb, FormatS, { // rv32i
-    mem_set_byte(cpu, cpu->xreg[ins.rs1] + ins.imm, cpu->xreg[ins.rs2]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    mem_set_byte(cpu, addr, cpu->xreg[ins.rs2]);
 })
 DEF(sc_w, FormatR, { // rv32a
     // I'm pretty sure this is not it chief, but it does the trick for now
-    uint addr = cpu->xreg[ins.rs1];
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1], MMU_ACCESS_WRITE);
     if (cpu->reservation_en && cpu->reservation_addr == addr) {
         mem_set_word(cpu, addr, cpu->xreg[ins.rs2]);
         cpu->reservation_en = false;
@@ -322,7 +357,9 @@ DEF(sfence_vma, FormatEmpty, { // system
     // skip
 })
 DEF(sh, FormatS, { // rv32i
-    mem_set_half_word(cpu, cpu->xreg[ins.rs1] + ins.imm, cpu->xreg[ins.rs2]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    mem_set_half_word(cpu, addr, cpu->xreg[ins.rs2]);
 })
 DEF(sll, FormatR, { // rv32i
     WR_RD(cpu->xreg[ins.rs1] << cpu->xreg[ins.rs2])
@@ -394,7 +431,9 @@ DEF(sub, FormatR, { // rv32i
     WR_RD(AS_SIGNED(cpu->xreg[ins.rs1]) - AS_SIGNED(cpu->xreg[ins.rs2]));
 })
 DEF(sw, FormatS, { // rv32i
-    mem_set_word(cpu, cpu->xreg[ins.rs1] + ins.imm, cpu->xreg[ins.rs2]);
+    uint addr = mmu_translate(ret, cpu->xreg[ins.rs1] + ins.imm, MMU_ACCESS_WRITE);
+    if (ret->trap.en) return;
+    mem_set_word(cpu, addr, cpu->xreg[ins.rs2]);
 })
 DEF(uret, FormatEmpty, { // system
     // unnecessary?
@@ -536,6 +575,11 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
 
     if (VERBOSE >= 1)
         printf("Invalid instruction: %08x\n", ins_word);
+
+    printf("INVALID INS\n");
+    SINGLE_STEP = 1;
+    VERBOSE = 4;
+
     ret.trap.en = true;
     ret.trap.type = trap_IllegalInstruction;
     ret.trap.value = ins_word;
@@ -545,20 +589,22 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
 
 void emulate(cpu_t *cpu) {
     uint ins_word = 0;
-    ins_ret ret;
+    ins_ret ret = ins_ret_noop(cpu);
     if ((cpu->pc & 0x3) == 0) {
-        ins_word = mem_get_word(cpu, cpu->pc);
-        ret = ins_select(cpu, ins_word);
+        uint ins_addr = mmu_translate(&ret, cpu->pc, MMU_ACCESS_FETCH);
+        if (!ret.trap.en) {
+            ins_word = mem_get_word(cpu, ins_addr);
+            ret = ins_select(cpu, ins_word);
 
-        if (ret.csr_write && !ret.trap.en) {
-            set_csr(cpu, ret.csr_write, ret.csr_val, &ret);
-        }
+            if (ret.csr_write && !ret.trap.en) {
+                set_csr(cpu, ret.csr_write, ret.csr_val, &ret);
+            }
 
-        if (!ret.trap.en && ret.write_reg < 32 && ret.write_reg > 0) {
-            cpu->xreg[ret.write_reg] = ret.write_val;
+            if (!ret.trap.en && ret.write_reg < 32 && ret.write_reg > 0) {
+                cpu->xreg[ret.write_reg] = ret.write_val;
+            }
         }
     } else {
-        ret = ins_ret_noop(cpu);
         ret.trap.en = true;
         ret.trap.type = trap_InstructionAddressMisaligned;
         ret.trap.value = cpu->pc;
@@ -572,8 +618,10 @@ void emulate(cpu_t *cpu) {
     cpu->clint.mtime_lo++;
     cpu->clint.mtime_hi += cpu->clint.mtime_lo == 0 ? 1 : 0;
 
-    if (cpu->clint.mtimecmp_lo != 0 && cpu->clint.mtimecmp_hi != 0 && (cpu->clint.mtime_hi > cpu->clint.mtimecmp_hi || (cpu->clint.mtime_hi == cpu->clint.mtimecmp_hi && cpu->clint.mtime_lo >= cpu->clint.mtimecmp_lo))) {
+    if ((cpu->clint.mtimecmp_lo != 0 || cpu->clint.mtimecmp_hi != 0) && (cpu->clint.mtime_hi > cpu->clint.mtimecmp_hi || (cpu->clint.mtime_hi == cpu->clint.mtimecmp_hi && cpu->clint.mtime_lo >= cpu->clint.mtimecmp_lo))) {
         cpu->csr.data[CSR_MIP] |= MIP_MTIP;
+        if (VERBOSE >= 1)
+            printf("timer irq: %d >= %d\n", cpu->clint.mtime_lo, cpu->clint.mtimecmp_lo);
     }
 
     uart_tick(cpu);

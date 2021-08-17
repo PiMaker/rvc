@@ -3,12 +3,13 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "types.h"
 #include "mem.h"
 #include "emu.h"
-#include "csr.h"
+#include "mmu.h"
 
-cpu_t cpu_init(uint8_t *mem, uint8_t *dtb) {
+cpu_t cpu_init(uint8_t *mem, uint8_t *dtb, uint8_t *mtd, uint mtd_size) {
     cpu_t ret;
     ret.clock = 0;
     for (uint i = 0; i < 32; i++) {
@@ -22,6 +23,8 @@ cpu_t cpu_init(uint8_t *mem, uint8_t *dtb) {
     init_csrs(&ret);
 
     ret.dtb = dtb;
+    ret.mtd = mtd;
+    ret.mtd_size = mtd_size;
 
     ret.clint.msip = false;
     ret.clint.mtimecmp_lo = 0;
@@ -34,8 +37,13 @@ cpu_t cpu_init(uint8_t *mem, uint8_t *dtb) {
     ret.uart.thre_ip = false;
     ret.uart.interrupting = false;
 
+    ret.mmu.mode = 0;
+    ret.mmu.ppn = 0;
+
     return ret;
 }
+
+static char *cmd_buf = NULL;
 
 void cpu_dump(cpu_t *cpu) {
     printf("CPU state @%d:\n", cpu->clock);
@@ -47,7 +55,28 @@ void cpu_dump(cpu_t *cpu) {
                i+3, cpu->xreg[i+3]);
     }
     printf("  .pc  = %08x\n", cpu->pc);
-    printf("  next ins: %08x\n", *(uint*)(cpu->mem + (cpu->pc & 0x7FFFFFFF)));
+    /* ins_ret ret; */
+    /* printf("  next ins: %08x\n", *(uint*)(cpu->mem + mmu_translate(&ret, cpu->pc & 0x7FFFFFFF, MMU_ACCESS_FETCH))); */
+
+    /* if (cmd_buf == NULL) { */
+    /*     cmd_buf = malloc(4096); */
+    /* } */
+    /* sprintf(cmd_buf, "addr2line -e testinit/init %x", cpu->pc); */
+    /* system(cmd_buf); */
+
+    uint arb[8];
+    for (int iarb = 0; iarb < 8; iarb++) {
+        uint arb_t = cpu->xreg[iarb*4+0] ^
+                     cpu->xreg[iarb*4+1] ^
+                     cpu->xreg[iarb*4+2] ^
+                     cpu->xreg[iarb*4+3];
+        printf("arb%d=0x%08x ", iarb, arb_t);
+        if (iarb == 3) printf("\n");
+        arb[iarb] = arb_t;
+    }
+    printf("\nARB=0x%08x\n", arb[0] ^ arb[1] ^ arb[2] ^ arb[3] ^ arb[4] ^ arb[5] ^ arb[6] ^ arb[7] ^ cpu->pc);
+
+    printf("\n");
 }
 
 void cpu_tick(cpu_t *cpu) {

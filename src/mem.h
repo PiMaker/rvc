@@ -6,16 +6,20 @@
 #include "types.h"
 #include "uart.h"
 
+const int MEM_SIZE = 1024 * 1024 * 64 - 2048 * 128;
+
 // little endian, zero extended
-uint mem_get_byte(cpu_t *cpu, uint addr) {
-    if (VERBOSE >= 3)
-        printf("mem_get_byte(%08x)\n", addr);
+uint do_mem_get_byte(cpu_t *cpu, uint addr) {
 
     if (cpu->dtb != NULL && addr >= 0x1020 && addr <= 0x1fff) {
         if (VERBOSE >= 2)
             printf("DTB read @%04x/%04x\n", addr, addr - 0x1020);
         return cpu->dtb[addr - 0x1020];
     }
+
+    /* if (cpu->mtd != NULL && addr >= 0x40000000 && addr < (0x40000000 + MEM_SIZE)) { */
+    /*     return cpu->mtd[addr - 0x40000000]; */
+    /* } */
 
     switch (addr) {
         // CLINT
@@ -59,20 +63,54 @@ uint mem_get_byte(cpu_t *cpu, uint addr) {
         case 0x10000004: return UART_GET2(MCR);
         case 0x10000005: return UART_GET2(LSR);
         case 0x10000007: return UART_GET2(SCR);
+
+        /* case 0x80001000: return 0; */
+        /* case 0x80001001: return 0; */
+        /* case 0x80001002: return 0; */
+        /* case 0x80001003: return 0; */
+        /* case 0x80001004: return 0; */
+        /* case 0x80001005: return 0; */
+        /* case 0x80001006: return 0; */
+        /* case 0x80001007: return 0; */
+        /* case 0x80001040: return 0; */
+        /* case 0x80001041: return 0; */
+        /* case 0x80001042: return 0; */
+        /* case 0x80001043: return 0; */
+        /* case 0x80001044: return 0; */
+        /* case 0x80001045: return 0; */
+        /* case 0x80001046: return 0; */
+        /* case 0x80001047: return 0; */
     }
 
     if ((addr & 0x80000000) == 0) {
         return 0;
     }
 
-    return cpu->mem[addr & 0x7FFFFFFF];
+    addr = addr & 0x7FFFFFFF;
+    if (addr >= MEM_SIZE) {
+        if (VERBOSE >= 1) {
+            printf("WARN: out-of-bounds memory read @0x%08x\n", addr | 0x80000000);
+        }
+        return 0;
+    }
+
+    return cpu->mem[addr];
+}
+
+uint mem_get_byte(cpu_t *cpu, uint addr) {
+    uint ret = do_mem_get_byte(cpu, addr);
+    if (VERBOSE >= 3)
+        printf("mem_get_byte(%08x) = 0x%08x\n", addr, ret);
+    return ret;
 }
 
 uint mem_get_half_word(cpu_t *cpu, uint addr) {
+    /* assert((addr & ~(0x1)) == addr); */
     return mem_get_byte(cpu, addr) | ((uint16_t)mem_get_byte(cpu, addr + 1) << 8);
 }
 
 uint mem_get_word(cpu_t *cpu, uint addr) {
+    /* assert((addr & ~(0x3)) == addr); */
     return mem_get_byte(cpu, addr) |
         ((uint16_t)mem_get_byte(cpu, addr + 1) << 8) |
         ((uint16_t)mem_get_byte(cpu, addr + 2) << 16) |
@@ -131,21 +169,49 @@ void mem_set_byte(cpu_t *cpu, uint addr, uint val) {
         case 0x10000003: UART_SET2(LCR, val); return;
         case 0x10000004: UART_SET2(MCR, val); return;
         case 0x10000007: UART_SET2(SCR, val); return;
+
+        /* case 0x80001000: printf("%c", (unsigned char)val); return; */
+        /* case 0x80001001: return; */
+        /* case 0x80001002: return; */
+        /* case 0x80001003: return; */
+        /* case 0x80001004: return; */
+        /* case 0x80001005: return; */
+        /* case 0x80001006: return; */
+        /* case 0x80001007: return; */
+        /* case 0x80001040: return; */
+        /* case 0x80001041: return; */
+        /* case 0x80001042: return; */
+        /* case 0x80001043: return; */
+        /* case 0x80001044: return; */
+        /* case 0x80001045: return; */
+        /* case 0x80001046: return; */
+        /* case 0x80001047: return; */
     }
 
     if ((addr & 0x80000000) == 0) {
         return;
     }
 
-    cpu->mem[addr & 0x7FFFFFFF] = val;
+    const int MEM_SIZE = 1024 * 1024 * 128;
+
+    addr = addr & 0x7FFFFFFF;
+    if (addr >= MEM_SIZE) {
+        if (VERBOSE >= 1) {
+            printf("WARN: out-of-bounds memory write @0x%08x\n", addr | 0x80000000);
+        }
+        return;
+    }
+    cpu->mem[addr] = val;
 }
 
 void mem_set_half_word(cpu_t *cpu, uint addr, uint val) {
+    /* assert((addr & ~(0x1)) == addr); */
     mem_set_byte(cpu, addr, val & 0xFF);
     mem_set_byte(cpu, addr + 1, (val >> 8) & 0xFF);
 }
 
 void mem_set_word(cpu_t *cpu, uint addr, uint val) {
+    /* assert((addr & ~(0x3)) == addr); */
     mem_set_byte(cpu, addr, val & 0xFF);
     mem_set_byte(cpu, addr + 1, (val >> 8) & 0xFF);
     mem_set_byte(cpu, addr + 2, (val >> 16) & 0xFF);

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "types.h"
 #include "trap.h"
+#include "mmu.h"
 
 const uint CSR_USTATUS = 0x000;
 const uint CSR_UIE = 0x004;
@@ -44,6 +45,16 @@ const uint CSR_TIME = 0xc01;
 const uint _CSR_INSERT = 0xc02;
 const uint CSR_MHARTID = 0xf14;
 
+const uint CSR_MEMOP_OP = 0x0b0;
+const uint CSR_MEMOP_SRC = 0x0b1;
+const uint CSR_MEMOP_DST = 0x0b2;
+const uint CSR_MEMOP_N = 0x0b3;
+
+#define MMU_ACCESS_FETCH 0
+#define MMU_ACCESS_READ 1
+#define MMU_ACCESS_WRITE 2
+extern uint mmu_translate(ins_ret *ins, uint addr, uint mode);
+
 bool has_csr_access_privilege(cpu_t *cpu, uint addr) {
     uint privilege = (addr >> 8) & 0x3;
     return privilege <= cpu->csr.privilege;
@@ -59,6 +70,7 @@ uint read_csr_raw(cpu_t *cpu, uint address) {
         case CSR_MCYCLE: return cpu->clock;
         case CSR_CYCLE: return cpu->clock;
         case CSR_MHARTID: return 0;
+        case CSR_SATP: return (cpu->mmu.mode << 31) | cpu->mmu.ppn;
         default: return cpu->csr.data[address & 0xffff];
     }
 }
@@ -66,30 +78,32 @@ uint read_csr_raw(cpu_t *cpu, uint address) {
 void write_csr_raw(cpu_t *cpu, uint address, uint value) {
     switch (address) {
         case CSR_SSTATUS:
-            cpu->csr.data[CSR_MSTATUS] &= !0x000de162;
+            cpu->csr.data[CSR_MSTATUS] &= ~0x000de162;
             cpu->csr.data[CSR_MSTATUS] |= value & 0x000de162;
-            /* self.mmu.update_mstatus(self.read_csr_raw(CSR_MSTATUS)); */
             break;
         case CSR_SIE:
-            cpu->csr.data[CSR_MIE] &= !0x222;
+            cpu->csr.data[CSR_MIE] &= ~0x222;
             cpu->csr.data[CSR_MIE] |= value & 0x222;
             break;
         case CSR_SIP:
-            cpu->csr.data[CSR_MIP] &= !0x222;
+            cpu->csr.data[CSR_MIP] &= ~0x222;
             cpu->csr.data[CSR_MIP] |= value & 0x222;
             break;
         case CSR_MIDELEG:
             cpu->csr.data[address] = value & 0x666; // from qemu
             break;
-        /* case CSR_MSTATUS: */
-        /*     cpu->csr.data[address] = value; */
-        /*     self.mmu.update_mstatus(self.read_csr_raw(CSR_MSTATUS)); */
-        /*     break; */
-        /* CSR_TIME => { */
-        /*     self.mmu.get_mut_clint().write_mtime(value); */
-        /* }, */
         case CSR_TIME:
             // ignore writes
+            break;
+        case CSR_MEMOP_OP:
+            /* printf("MEMOP:%08x<-%08x(%d)\n", cpu->csr.data[CSR_MEMOP_DST], cpu->csr.data[CSR_MEMOP_SRC], cpu->csr.data[CSR_MEMOP_N]); */
+            {
+                ins_ret ins = ins_ret_noop(cpu);
+                uint src = mmu_translate(&ins, cpu->csr.data[CSR_MEMOP_SRC], MMU_ACCESS_READ);
+                uint dst = mmu_translate(&ins, cpu->csr.data[CSR_MEMOP_DST], MMU_ACCESS_WRITE);
+                uint n = cpu->csr.data[CSR_MEMOP_N];
+                memcpy(&cpu->mem[dst & (~0x80000000)], &cpu->mem[src & (~0x80000000)], n);
+            }
             break;
         default: cpu->csr.data[address] = value; break;
     };
@@ -99,7 +113,7 @@ void write_csr_raw(cpu_t *cpu, uint address, uint value) {
 uint get_csr(cpu_t *cpu, uint address, ins_ret *ret) {
     if (has_csr_access_privilege(cpu, address)) {
         uint r = read_csr_raw(cpu, address);
-        if (VERBOSE >= 2)
+        if (VERBOSE >= 3)
             printf("CSR read @%03x = %08x\n", address, r);
         return r;
     } else {
@@ -111,8 +125,9 @@ uint get_csr(cpu_t *cpu, uint address, ins_ret *ret) {
 }
 
 void set_csr(cpu_t *cpu, uint address, uint value, ins_ret *ret) {
-    if (VERBOSE >= 2)
+    if (VERBOSE >= 3)
         printf("CSR write @%03x = %08x\n", address, value);
+
     if (has_csr_access_privilege(cpu, address)) {
         bool read_only = ((address >> 10) & 0x3) == 0x3;
         if (read_only) {
@@ -121,9 +136,9 @@ void set_csr(cpu_t *cpu, uint address, uint value, ins_ret *ret) {
             ret->trap.value = cpu->pc;
         } else {
             if (address == CSR_SATP) {
-                // TODO: update MMU addressing mode
                 if (VERBOSE >= 1)
-                    printf("WARN: Ignoring write to CSR_SATP (%08x)\n", value);
+                    printf("Write to CSR_SATP (%08x)\n", value);
+                mmu_update(value);
                 return;
             }
             write_csr_raw(cpu, address, value);

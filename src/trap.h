@@ -120,7 +120,7 @@ bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
     uint csr_tval_addr = new_privilege == PRIV_MACHINE ? CSR_MTVAL : (new_privilege == PRIV_SUPERVISOR ? CSR_STVAL : CSR_UTVAL);
     uint csr_tvec_addr = new_privilege == PRIV_MACHINE ? CSR_MTVEC : (new_privilege == PRIV_SUPERVISOR ? CSR_STVEC : CSR_UTVEC);
 
-    write_csr_raw(cpu, csr_epc_addr, cpu->pc);
+    write_csr_raw(cpu, csr_epc_addr, is_interrupt ? ret->pc_val : cpu->pc);
     write_csr_raw(cpu, csr_cause_addr, t.type);
     write_csr_raw(cpu, csr_tval_addr, t.value);
     ret->pc_val = read_csr_raw(cpu, csr_tvec_addr);
@@ -133,16 +133,16 @@ bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
     // NOTE: No user mode interrupt/exception handling!
     if (new_privilege == PRIV_MACHINE) {
         uint mie = (mstatus >> 3) & 1;
-        uint new_status = (mstatus & !0x1888) | (mie << 7) | (current_privilege << 11);
+        uint new_status = (mstatus & ~0x1888) | (mie << 7) | (current_privilege << 11);
         write_csr_raw(cpu, CSR_MSTATUS, new_status);
     } else { // PRIV_SUPERVISOR
-        uint sie = (sstatus >> 3) & 1;
-        uint new_status = (sstatus & !0x122) | (sie << 5) | ((current_privilege & 1) << 8);
+        uint sie = (sstatus >> 1) & 1;
+        uint new_status = (sstatus & ~0x122) | (sie << 5) | ((current_privilege & 1) << 8);
         write_csr_raw(cpu, CSR_SSTATUS, new_status);
     }
 
-    if (VERBOSE >= 1)
-        printf("trap: type=%08x value=%08x (IRQ: %d) moved PC from @%08x to @%08x\n", t.type, t.value, is_interrupt, cpu->pc, ret->pc_val);
+    if (VERBOSE >= (is_interrupt ? 1 : 2))
+        printf("trap: type=%08x value=%08x (IRQ: %d) moved PC from @%08x (#%d) to @%08x (#%d)\n", t.type, t.value, is_interrupt, cpu->pc, current_privilege, ret->pc_val, new_privilege);
 
     return true;
 }
@@ -172,6 +172,8 @@ void handle_irq_and_trap(cpu_t *cpu, ins_ret *ret) {
         if (handled && irq) {
             // reset MIP value since IRQ was handled
             write_csr_raw(cpu, CSR_MIP, cur_mip & ~mip_reset);
+            if (VERBOSE >= 3)
+                printf("IRQ handled: old_mip=%03x new_mip=%03x\n", cur_mip, read_csr_raw(cpu, CSR_MIP));
         }
     }
 }

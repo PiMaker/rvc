@@ -32,14 +32,22 @@ typedef struct {
 } clint_state;
 
 typedef struct {
+    uint mode;
+    uint ppn;
+} mmu_state;
+
+typedef struct {
     uint clock;
     uint xreg[32];
     uint pc;
     uint8_t *mem;
     uint8_t *dtb;
+    uint8_t *mtd;
+    uint mtd_size;
     csr_state csr;
     clint_state clint;
     uart_state uart;
+    mmu_state mmu;
 
     bool reservation_en;
     uint reservation_addr;
@@ -72,5 +80,7 @@ uint sign_extend(uint x, uint b) {
     uint m = ((uint)1) << (b - 1);
     return (x ^ m) - m;
 }
+
+static cpu_t cpu;
 
 #endif

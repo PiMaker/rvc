@@ -40,10 +40,12 @@ void uart_update_iir(cpu_t *cpu) {
 void uart_tick(cpu_t *cpu) {
     bool rx_ip = false;
 
-    if ((cpu->clock % 0x38400) == 0 && UART_GET1(RBR) == 0) {
+    if ((cpu->clock % 0x1000) == 0 && UART_GET1(RBR) == 0) {
         uint value = uart_input_value; // TODO: Add actual input logic
         uart_input_value = 0;
+        if (value == '\n') value = '\r'; // This is necessary I think?
         if (value != 0) {
+            /* fprintf(stderr, "I'%d'", value); */
             UART_SET1(RBR, value);
             UART_SET2(LSR, (UART_GET2(LSR) | LSR_DATA_AVAILABLE));
             uart_update_iir(cpu);
@@ -54,8 +56,8 @@ void uart_tick(cpu_t *cpu) {
     }
 
     uint thr = UART_GET1(THR);
-    if ((cpu->clock & 0x16) == 0 && thr != 0) {
-        printf("%c", (char)thr);
+    if ((cpu->clock % 0x16) == 0 && thr != 0) {
+        printf(" %d", (unsigned char)thr);
         fflush(stdout);
         UART_SET1(THR, 0);
         UART_SET2(LSR, (UART_GET2(LSR) | LSR_THR_EMPTY));
@@ -65,7 +67,7 @@ void uart_tick(cpu_t *cpu) {
         }
     }
 
-    if (cpu->uart.thre_ip || rx_ip) {
+    if (!cpu->uart.interrupting && (cpu->uart.thre_ip || rx_ip)) {
         cpu->uart.interrupting = true;
         cpu->uart.thre_ip = false;
     } else {
