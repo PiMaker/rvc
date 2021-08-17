@@ -17,3 +17,4 @@ fw_payload.*
 *.img
 toimg/target
 toimg/Cargo.lock
+buildroot-2021.05/build.marker
