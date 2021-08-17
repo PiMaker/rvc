@@ -38,7 +38,10 @@ pub fn main() -> ! {
     print_usize(register::time::read());
     print("\n");
 
-    println("Tests done, entering infinite loop!");
+    println("Exiting via 'tohost' ecall...");
+    ecall(93 /* tohost */, 0 /* exit code */, 0, 0);
+
+    println("ecall failed (?), entering infinite loop!");
     loop {}
 }
 

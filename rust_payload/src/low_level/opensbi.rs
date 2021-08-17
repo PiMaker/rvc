@@ -45,12 +45,12 @@ fn print_hex_part(u: u8) {
         7 => print("7"),
         8 => print("8"),
         9 => print("9"),
-        10 => print("A"),
-        11 => print("B"),
-        12 => print("C"),
-        13 => print("D"),
-        14 => print("E"),
-        15 => print("F"),
+        10 => print("a"),
+        11 => print("b"),
+        12 => print("c"),
+        13 => print("d"),
+        14 => print("e"),
+        15 => print("f"),
         _ => unreachable!(),
     }
 }
