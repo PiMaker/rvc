@@ -9,3 +9,7 @@ rust_payload/target
 rust_payload/Cargo.lock
 fw_payload.*
 *.dtb
+*.bmp
+*.bin
+*.elf
+*.img
