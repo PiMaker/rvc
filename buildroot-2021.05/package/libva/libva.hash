@@ -1,0 +1,5 @@
+# From https://github.com/intel/libva/releases/download/2.11.0/libva-2.11.0.tar.bz2.sha1sum
+sha1  35baa7667e8a51ca3d481786095469d38cacfb2f  libva-2.11.0.tar.bz2
+# Locally computed
+sha256  6e361117038b571ad4741d38c9280db8c140b17e76e8c01fc7a4d608d3ed7d5d  libva-2.11.0.tar.bz2
+sha256  c86a782ee845b52472dae9b9d79fb915d333628ac0efe49cdce63644814931de  COPYING

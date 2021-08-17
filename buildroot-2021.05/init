@@ -1,0 +1,24 @@
+#!/bin/sh
+
+cat << EOF
+                  _ _
+                 | (_)
+ _ ____   _____  | |_ _ __  _   ___  __
+| '__\ \ / / __| | | | '_ \| | | \ \/ /
+| |   \ V / (__  | | | | | | |_| |>  <
+|_|    \_/ \___| |_|_|_| |_|\__,_/_/\_\
+
+
+                              by _pi_
+
+> Setting up mounts...
+EOF
+
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+
+echo "> Starting busybox shell..."
+echo
+echo "Try running 'qjs pi.js X' to compute X digits of PI!"
+echo
+exec /bin/sh
