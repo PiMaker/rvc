@@ -9,6 +9,8 @@ https://vrchat.com/home/world/wrld_8126d9ef-eba5-4d49-9867-9e3c4f0b290d
 
 The C version was initially based on [takahirox/riscv-rust](https://github.com/takahirox/riscv-rust) (see for example instruction decoder generation using `instructions.txt` and `parse_ins.pl`), which is a great resource for learning about RISC-V in general, aside from the [official specs](https://riscv.org/technical/specifications/) of course.
 
+![Linux running in VRChat](panic.jpg)
+
 [0] GPUs only really support 32-bit integer math (in the use-case I want to put this in anyway)  
 [1] The elf loader ('elfy') is written in Rust, because I was too lazy to do it myself in C (Rust uses the 'elf' crate) and it doesn't need porting anyway.
 
