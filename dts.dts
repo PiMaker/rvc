@@ -7,13 +7,13 @@
     model = "generic,rvc";
 
     chosen {
-        bootargs = "ttyS0";
-        stdout-path = "/uart@10000000";
+        bootargs = "console=hvc0 earlycon=sbi loglevel=15 debug single";
+        //stdout-path = "/uart@10000000";
     };
 
     uart@10000000 {
         interrupts = <0x1>;
-        interrupt-parent = <0x2>;
+        interrupt-parent = <&irqchip>;
         clock-frequency = <0x384000>;
         reg = <0x0 0x10000000 0x0 0x100>;
         compatible = "ns16550a";
@@ -22,7 +22,7 @@
     cpus {
         #address-cells = <0x1>;
         #size-cells = <0x0>;
-        timebase-frequency = <0x989680>;
+        timebase-frequency = <0x1000000>;
 
         cpu-map {
             cluster0 {
@@ -33,15 +33,15 @@
         };
 
         cpu@0 {
-            phandle = <0x1>;
             device_type = "cpu";
             reg = <0x0>;
             status = "okay";
             compatible = "riscv";
-            riscv,isa = "rv64imasu";
+            riscv,isa = "rv32imasu";
+            mmu-type = "riscv,sv32";
 
-            interrupt-controller {
-                phandle = <0x2>;
+            irqchip: interrupt-controller {
+                #address-cells = <0x1>;
                 #interrupt-cells = <0x1>;
                 interrupt-controller;
                 compatible = "riscv,cpu-intc";
@@ -51,7 +51,7 @@
 
     memory@80000000 {
         device_type = "memory";
-        reg = <0x0 0x80000000 0x0 0x8000000>;
+        reg = <0x0 0x80000000 0x0 0x03B00000>; /* includes safety margin at end? */
     };
 
     soc {
@@ -61,7 +61,7 @@
         ranges;
 
         clint@2000000 {
-            interrupts-extended = <0x2 0x3 0x2 0x7>;
+            interrupts-extended = <&irqchip 0x3 &irqchip 0x7>;
             reg = <0x0 0x2000000 0x0 0x10000>;
             compatible = "riscv,clint0";
         };
