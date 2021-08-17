@@ -58,7 +58,7 @@ uint8_t* get_mmap_ptr(const char* filename) {
 }
 
 void usage() {
-    printf("Usage: rvc (-e <ELF binary>|-b <raw binary>) [-d <device tree binary>] [-i <initramfs>] [-v (0|1|2|3|4)] [-s] [-t]\n");
+    printf("Usage: rvc (-e <ELF binary>|-b <raw binary>) [-d <device tree binary>] [-i <initramfs>] [-v (0|1|2|3|4)] [-s] [-t] [-x]\n");
     exit(EXIT_FAILURE);
 }
 
@@ -92,9 +92,12 @@ int main(int argc, char *argv[]) {
     int c;
     bool trace = false;
 
-    while ((c = getopt (argc, argv, "e:b:d:v:i:st")) != -1) {
+    while ((c = getopt (argc, argv, "e:b:d:v:i:stx")) != -1) {
         switch (c)
         {
+            case 'x':
+                allow_ecall_exit = true;
+                break;
             case 'e':
                 elf = optarg;
                 break;
@@ -163,7 +166,7 @@ int main(int argc, char *argv[]) {
     setvbuf(stdin, NULL, _IONBF, 0);
     buf_off();
 
-    // LIMITER
+    // LIMITER (set to high number to ignore)
     const unsigned long restr = 200000*1000;
     unsigned long cur = 0;
     unsigned long t = time(NULL);
@@ -204,13 +207,13 @@ int main(int argc, char *argv[]) {
         /*     printf("else if (cpu.clock == %d && arb != 0x%08x) ARB_FAIL\n", cpu.clock, arb_f); */
         /* } */
 
-        if (cpu.pc == 0x80000118) {
+        /* if (cpu.pc == 0x80000118) { */
         /* if (cpu.clock == 6350505) { // divergence: 6350908 */
         /* if (cpu.clock == 6400000) { */
-            printf("BREAKPOINT HIT\n");
-            SINGLE_STEP = 1;
-            VERBOSE = 4;
-        }
+            /* printf("BREAKPOINT HIT\n"); */
+            /* SINGLE_STEP = 1; */
+            /* VERBOSE = 4; */
+        /* } */
 
         if (VERBOSE >= 4)
             cpu_dump(&cpu);

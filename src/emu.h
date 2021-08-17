@@ -10,6 +10,8 @@
 #include "trap.h"
 #include "csr.h"
 
+static bool allow_ecall_exit = false;
+
 #define AS_SIGNED(val) (*(int32_t*)&val)
 #define AS_UNSIGNED(val) (*(uint*)&val)
 const uint ZERO = 0;
@@ -203,12 +205,12 @@ DEF(ebreak, FormatEmpty, { // system
     SINGLE_STEP=1;
 })
 DEF(ecall, FormatEmpty, { // system
-    /* if (cpu->xreg[17] == 93) { */
-    /*     // EXIT CALL */
-    /*     uint status = cpu->xreg[10] >> 1; */
-    /*     printf("ecall EXIT = %d (0x%x)\n", status, status); */
-    /*     exit(status); */
-    /* } */
+    if (allow_ecall_exit && cpu->xreg[17] == 93) {
+        // EXIT CALL
+        uint status = cpu->xreg[10] >> 1;
+        printf("ecall EXIT = %d (0x%x)\n", status, status);
+        exit(status);
+    }
 
     ret->trap.en = true;
     ret->trap.value = cpu->pc;
