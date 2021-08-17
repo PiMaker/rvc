@@ -13,3 +13,5 @@ fw_payload.*
 *.bin
 *.elf
 *.img
+toimg/target
+toimg/Cargo.lock
