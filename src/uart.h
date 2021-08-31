@@ -57,7 +57,7 @@ void uart_tick(cpu_t *cpu) {
 
     uint thr = UART_GET1(THR);
     if ((cpu->clock % 0x16) == 0 && thr != 0) {
-        printf(" %d", (unsigned char)thr);
+        printf("%c", (unsigned char)thr);
         fflush(stdout);
         UART_SET1(THR, 0);
         UART_SET2(LSR, (UART_GET2(LSR) | LSR_THR_EMPTY));

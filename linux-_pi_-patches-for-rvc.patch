@@ -1,44 +1,45 @@
-From fbba62aff7a727723aa75715e1d1838b484ba842 Mon Sep 17 00:00:00 2001
+From 30022eebb78abc5a8a9289aecbd30a155fafcff0 Mon Sep 17 00:00:00 2001
 From: Stefan <stefan@pimaker.at>
 Date: Sun, 1 Aug 2021 20:58:20 +0200
 Subject: [PATCH] _pi_ patches for rvc
 
-* use MEMOP extension for faster memcpy (disabled atm)
+* use MEMOP extension for faster memcpy
 * don't poison init kernel area, we don't care about security
 * print more messages about initramfs loading, since otherwise it just
   looks like it got stuck
 
 Signed-off-by: Stefan <stefan@pimaker.at>
 ---
- arch/riscv/lib/memcpy.S | 13 +++++++++++++
+ arch/riscv/lib/memcpy.S | 14 ++++++++++++++
  include/linux/mm.h      |  2 +-
  init/initramfs.c        | 19 +++++++++++++++++--
- 3 files changed, 31 insertions(+), 3 deletions(-)
+ 3 files changed, 32 insertions(+), 3 deletions(-)
 
 diff --git a/arch/riscv/lib/memcpy.S b/arch/riscv/lib/memcpy.S
-index 51ab716253fa..67636579413d 100644
+index 51ab716253fa..67e3cf24d9d0 100644
 --- a/arch/riscv/lib/memcpy.S
 +++ b/arch/riscv/lib/memcpy.S
-@@ -41,6 +41,18 @@ WEAK(memcpy)
+@@ -41,6 +41,19 @@ WEAK(memcpy)
  	beqz a4, 4f
  	add a3, a1, a4
  3:
-+	#lla t0, 10f
-+	#li t2, 1025
-+	#bltu a2, t2, 11f
++	# fast memcpy for page-sized chunks
++	lla t0, 10f
++	li t2, 4096
++	bne a2, t2, 11f
 +
-+	#csrw 0x0b1, a1 # src
-+	#csrw 0x0b2, t6 # dst
-+	#csrw 0x0b3, a2 # n
-+	#li t2, 0x1
-+	#csrw 0x0b0, t2 # memcpy
-+	#j 10f
++	csrw 0x0b1, a1 # src
++	csrw 0x0b2, t6 # dst
++	csrw 0x0b3, a2 # n
++	li t2, 0x1
++	csrw 0x0b0, t2 # memcpy
++	j 10f
 +
 +11:
  	REG_L a4,       0(a1)
  	REG_L a5,   SZREG(a1)
  	REG_L a6, 2*SZREG(a1)
-@@ -76,6 +88,7 @@ WEAK(memcpy)
+@@ -76,6 +89,7 @@ WEAK(memcpy)
  	REG_S t1, 15*SZREG(t6)
  	addi t6, t6, 16*SZREG
  	bltu a1, a3, 3b

@@ -88,7 +88,7 @@ _s_trap_entry:
     STORE  t2, 34*REGBYTES(x2)
     STORE  t3, 35*REGBYTES(x2)
 
-    move  a0, sp
+    mv   a0, sp
     jal handle_trap
 
     mv   a0, sp
@@ -101,7 +101,6 @@ _s_trap_entry:
 
     # restore x registers
     LOAD  x1,1*REGBYTES(a0)
-    LOAD  x2,2*REGBYTES(a0)
     LOAD  x3,3*REGBYTES(a0)
     LOAD  x4,4*REGBYTES(a0)
     LOAD  x5,5*REGBYTES(a0)

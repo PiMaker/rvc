@@ -15,7 +15,7 @@ DEPS := $(OBJS:.o=.d)
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CFLAGS += -O3 -march=rv32ima -mabi=ilp32 -fno-stack-protector -fno-pie
+CFLAGS += -O2 -march=rv32ima -mabi=ilp32 -fno-stack-protector -fno-pie
 ASFLAGS += -march=rv32ima -mabi=ilp32
 LDFLAGS += -static -nostdlib -nostartfiles -nodefaultlibs -Triscv32.ld -Wl,--no-as-needed
 

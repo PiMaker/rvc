@@ -17,16 +17,6 @@ CFLAGS=-g
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -I./elfy/elfy.h $(OBJS) -o $@ $(LOADLIBES) $(LDLIBS) -L./elfy/target/release/ -Wl,--no-as-needed -ldl -lpthread -lelfy
 
-.PHONY: clean
-clean:
-	$(RM) $(TARGET) $(OBJS) $(DEPS)
-
-.PHONY: distclean
-distclean: clean
-	$(RM) $(TARGET) $(OBJS) $(DEPS) *_payload.*
-	$(MAKE) -C opensbi clean
-	$(MAKE) -C linux clean
-
 -include $(DEPS)
 
 # build device tree
@@ -39,9 +29,9 @@ LINUX_PAYLOAD=linux/arch/riscv/boot/Image
 
 BUILDROOT_MARKER=buildroot-2021.05/build.marker
 $(BUILDROOT_MARKER):
-	$(MAKE) -C buildroot-2021.05 make
+	$(MAKE) -C buildroot-2021.05
 	cd buildroot-2021.05 && cp init output/target/ && cp pi.js output/target/
-	$(MAKE) -C buildroot-2021.05 make
+	$(MAKE) -C buildroot-2021.05
 	touch $@
 
 $(PAYLOAD): $(shell find rust_payload/src -type f)
@@ -101,3 +91,15 @@ run: fw_payload.bin $(TARGET) dts.dtb
 
 run-v1: fw_payload.bin $(TARGET) dts.dtb
 	./rvc -b fw_payload.bin -d dts.dtb -v1
+
+
+.PHONY: clean
+clean:
+	$(RM) $(TARGET) $(OBJS) $(DEPS)
+
+.PHONY: distclean
+distclean: clean
+	$(RM) $(TARGET) $(OBJS) $(DEPS) *_payload.*
+	$(MAKE) -C opensbi clean
+	$(MAKE) -C linux clean
+	$(RM) $(BUILDROOT_MARKER)
