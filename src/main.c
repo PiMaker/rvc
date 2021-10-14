@@ -14,6 +14,7 @@
 #include <termios.h>
 
 #include "../elfy/elfy.h"
+#include "pngout.h"
 
 struct termios t, t_orig;
 void buf_off(void)
@@ -76,7 +77,9 @@ void term(int signum)
    /*     printf("%05x: %08x\n", i, val); */
    /* } */
 
-   print_tracebuf();
+   /* print_tracebuf(); */
+
+   write_ram_as_png("ram.png");
 
    /* printf("\n"); */
    exit(EXIT_FAILURE);
@@ -193,6 +196,10 @@ int main(int argc, char *argv[]) {
         if (tracebuf_idx >= (sizeof(tracebuf) / sizeof(uint))) {
             tracebuf_idx = 0;
         }
+
+        /* if (cpu.clock > 1000000) { */
+        /*     term(1); */
+        /* } */
 
         /* if (cpu.clock > 5000000 && cpu.clock % 100000 == 0) { */
         /*     uint arb[8]; */

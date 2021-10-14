@@ -1,0 +1,8 @@
+[package]
+name = "rust_raytrace"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+micromath = { version = "2.0", features = ["vector"] }
+linked_list_allocator = "0.9"

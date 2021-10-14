@@ -1,5 +1,5 @@
 TARGET ?= rvc
-SRC_DIRS ?= ./src
+SRC_DIRS ?= ./src ./tinypngout
 
 CC=clang
 
@@ -12,10 +12,10 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 Q=$(CURDIR)/buildroot-2021.05/output/host/bin/riscv32-buildroot-linux-gnu-
 
-CFLAGS=-g
+CFLAGS ?= -g -O2
 
 $(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -I./elfy/elfy.h $(OBJS) -o $@ $(LOADLIBES) $(LDLIBS) -L./elfy/target/release/ -Wl,--no-as-needed -ldl -lpthread -lelfy
+	$(CC) $(LDFLAGS) -I./elfy/elfy.h -I./tinypngout/TinyPngOut.h $(OBJS) -o $@ $(LOADLIBES) $(LDLIBS) -L./elfy/target/release/ -Wl,--no-as-needed -ldl -lpthread -lelfy
 
 -include $(DEPS)
 
@@ -26,6 +26,7 @@ dts.dtb: dts.dts
 OPENSBI_BUILD=opensbi/build/platform/generic/firmware
 PAYLOAD=rust_payload/target/riscv32ima-unknown-none-elf/release/rust_payload.bin
 LINUX_PAYLOAD=linux/arch/riscv/boot/Image
+RAYTRACE_PAYLOAD=rust_raytrace/target/riscv32ima-unknown-none-elf/release/rust_raytrace.bin
 
 BUILDROOT_MARKER=buildroot-2021.05/build.marker
 $(BUILDROOT_MARKER):
@@ -39,6 +40,15 @@ $(PAYLOAD): $(shell find rust_payload/src -type f)
 		cargo +riscv32ima rustc -Zbuild-std --release --target "riscv32ima-unknown-none-elf" -- -Clink-arg=-Tlinker.ld -Clinker=$(Q)ld
 	$(Q)objcopy -O binary \
 		rust_payload/target/riscv32ima-unknown-none-elf/release/rust_payload $(PAYLOAD)
+
+$(RAYTRACE_PAYLOAD): $(shell find rust_raytrace/src -type f)
+	cd rust_raytrace; \
+		cargo +riscv32ima rustc -Zbuild-std --release --target "riscv32ima-unknown-none-elf" -- -Clink-arg=-Tlinker.ld -Clinker=$(Q)ld
+	$(Q)objcopy -O binary \
+		rust_raytrace/target/riscv32ima-unknown-none-elf/release/rust_raytrace $(RAYTRACE_PAYLOAD)
+
+rust_raytrace.bin: $(RAYTRACE_PAYLOAD)
+	cp $(RAYTRACE_PAYLOAD) $@
 
 rust_payload.bin: rust_payload.elf
 	cp $(OPENSBI_BUILD)/fw_payload.bin ./rust_payload.bin

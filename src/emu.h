@@ -10,6 +10,9 @@
 #include "trap.h"
 #include "csr.h"
 
+#include "pngout.h"
+static int ebreak_png = 0;
+
 static bool allow_ecall_exit = false;
 
 #define AS_SIGNED(val) (*(int32_t*)&val)
@@ -203,6 +206,10 @@ DEF(ebreak, FormatEmpty, { // system
     printf("EBREAK!\n");
     VERBOSE=4;
     SINGLE_STEP=1;
+    /* char buf[12]; */
+    /* sprintf(buf, "ram_%d.png", ebreak_png++); */
+    /* int ret = write_ram_as_png(buf); */
+    /* printf(" (%d)", ret); */
 })
 DEF(ecall, FormatEmpty, { // system
     if (allow_ecall_exit && cpu->xreg[17] == 93) {

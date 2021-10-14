@@ -112,9 +112,9 @@ uint mem_get_half_word(cpu_t *cpu, uint addr) {
 uint mem_get_word(cpu_t *cpu, uint addr) {
     /* assert((addr & ~(0x3)) == addr); */
     return mem_get_byte(cpu, addr) |
-        ((uint16_t)mem_get_byte(cpu, addr + 1) << 8) |
-        ((uint16_t)mem_get_byte(cpu, addr + 2) << 16) |
-        ((uint16_t)mem_get_byte(cpu, addr + 3) << 24);
+        ((uint32_t)mem_get_byte(cpu, addr + 1) << 8) |
+        ((uint32_t)mem_get_byte(cpu, addr + 2) << 16) |
+        ((uint32_t)mem_get_byte(cpu, addr + 3) << 24);
 }
 
 void mem_set_byte(cpu_t *cpu, uint addr, uint val) {
