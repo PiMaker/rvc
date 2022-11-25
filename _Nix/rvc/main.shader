@@ -6,10 +6,13 @@
         [ToggleUI] _InitRaw ("Init directly from _Data_RAM_RAW", float) = 0
         _Ticks ("Ticks per Frame", Int) = 1024
         _TicksDivisor ("Tick Divisor", Int) = 4
-        _UdonUARTPtr ("UART ptr on Udon side", Int) = 0
 
         _UdonUARTInChar ("UART input Udon side", Int) = 0
         _UdonUARTInTag ("UART input unique tag", Int) = 0
+
+        _PlayerID ("Player ID", Int) = -1
+        _RTC0 ("RTC0", Int) = 0
+        _RTC1 ("RTC1", Int) = 0
 
         _Data_RAM_R ("RAM Texture R", 2D) = "black" {}
         _Data_RAM_G ("RAM Texture G", 2D) = "black" {}
@@ -22,6 +25,11 @@
         _Data_DTB_G ("Device Tree Binary Texture G", 2D) = "black" {}
         _Data_DTB_B ("Device Tree Binary Texture B", 2D) = "black" {}
         _Data_DTB_A ("Device Tree Binary Texture A", 2D) = "black" {}
+
+        _Data_MTD_R ("MTD ROM Texture R", 2D) = "black" {}
+        _Data_MTD_G ("MTD ROM Texture G", 2D) = "black" {}
+        _Data_MTD_B ("MTD ROM Texture B", 2D) = "black" {}
+        _Data_MTD_A ("MTD ROM Texture A", 2D) = "black" {}
 
         _DoTick ("DEBUG: Perform single step", Int) = 0
         /* _BreakpointLow ("DEBUG: Breakpoint: Enter single step mode at this PC address (low 16)", Int) = 0 */
@@ -51,13 +59,17 @@
 
             #define PASS_TICK
 
+            // Cache buster: 31
+
             // custom crt include w/ Texture2D<uint4> self-reference
             #include "crt.cginc"
             #include "UnityCG.cginc"
 
             uniform uint _Init, _InitRaw;
             uniform uint _Ticks, _TicksDivisor;
-            uniform uint _UdonUARTPtr, _UdonUARTInChar, _UdonUARTInTag;
+            uniform uint _UdonUARTInChar, _UdonUARTInTag;
+            uniform uint _PlayerID;
+            uniform uint _RTC0, _RTC1;
             uniform uint _DoTick;
             /* uniform uint _BreakpointLow, _BreakpointHigh; */
             /* uniform uint _BreakpointLowClock, _BreakpointHighClock; */
@@ -69,9 +81,19 @@
             Texture2D<float4> _Data_DTB_B;
             Texture2D<float4> _Data_DTB_A;
 
-            #define STATE_TEX _SelfTexture2D
+            Texture2D<float4> _Data_MTD_R;
+            Texture2D<float4> _Data_MTD_G;
+            Texture2D<float4> _Data_MTD_B;
+            Texture2D<float4> _Data_MTD_A;
+
+            static uint hart = 0;
+            static uint2 hart_offset = uint2(0, 0);
+
+            #define STATE_TEX_HART(pos, hartidx) (_SelfTexture2D[uint2(pos) + uint2(hartidx % 2, hartidx / 2)])
+            #define STATE_TEX(pos) (_SelfTexture2D[pos])
 
             static uint2 s_dim;
+            static uint2 m_dim;
 
             #include "helpers.cginc"
 
@@ -82,26 +104,40 @@
             #include "src/cpu.h"
 
             uint4 frag(v2f_customrendertexture i) : SV_Target {
-                STATE_TEX.GetDimensions(s_dim.x, s_dim.y);
+                _SelfTexture2D.GetDimensions(s_dim.x, s_dim.y);
+                _Data_MTD_R.GetDimensions(m_dim.x, m_dim.y);
 
                 uint2 pos = i.globalTexcoord.xy * s_dim;
 
                 _Ticks /= max(_TicksDivisor, 1);
                 _Ticks = max(_Ticks, 2);
 
+                // calculate active hart in 2x2 (mip-map) grid
+                /* hart = pos.y % 2 == 0 ? */
+                /*     (pos.x % 2 == 0 ? 0 : 1) : */
+                /*     (pos.x % 2 == 0 ? 2 : 3); */
+                /* hart_offset = uint2(hart % 2, hart / 2); */
+                /* pos /= 2; */
+                /* if (hart > 0) { */
+                /*     // FIXME */
+                /*     return uint4(~0, ~0, ~0, ~0); */
+                /* } */
+
                 /* _Breakpoint = _BreakpointLow | (_BreakpointHigh << 16); */
                 /* _BreakpointClock = _BreakpointLowClock | (_BreakpointHighClock << 16); */
 
                 if (_Init) {
-                    if (!_InitRaw) {
+                    if (_InitRaw) {
+                        return _SelfTexture2D[pos];
+                    } else {
                         cpu = cpu_init();
                     }
                 } else {
                     if (!pixel_has_state(pos)) {
-                        return STATE_TEX[pos];
+                        return STATE_TEX(pos);
                     }
 
-                    decode(_UdonUARTPtr);
+                    decode();
 
                     [fastopt]
                     for (uint i = 0; i < _Ticks && !cpu.stall; i++) {
@@ -113,8 +149,6 @@
                 /* cpu.debug_mem_val = mem_get_word(_CheckMEM | (_CheckMEMraw ? 0 : 0x80000000)); */
 
                 return encode(pos);
-                /* return uint4(mem_get_word(0x80000000), 0, 0, 0); */
-                /* return uint4(uint(pos.x + 128*pos.y) % 256, 0, 0, 0); */
             }
             ENDCG
         }
@@ -130,6 +164,8 @@
 
             #define PASS_COMMIT
 
+            // Cache buster: 31
+
             // custom crt include
             #include "crt.cginc"
             #include "UnityCG.cginc"
@@ -140,23 +176,34 @@
             Texture2D<float4> _Data_RAM_G;
             Texture2D<float4> _Data_RAM_B;
             Texture2D<float4> _Data_RAM_A;
-            Texture2D<uint4> _Data_RAM_RAW;
+            Texture2D<float4> _Data_RAM_RAW;
 
-            #define STATE_TEX _SelfTexture2D
+            Texture2D<float4> _Data_MTD_R;
+            Texture2D<float4> _Data_MTD_G;
+            Texture2D<float4> _Data_MTD_B;
+            Texture2D<float4> _Data_MTD_A;
+
+            #define STATE_TEX_HART(pos, hartidx) (_SelfTexture2D[uint2(pos) + uint2(hartidx % 2, hartidx / 2)])
+            #define STATE_TEX(pos) (_SelfTexture2D[pos])
 
             static uint2 s_dim;
+            static uint2 m_dim;
 
             #include "helpers.cginc"
-
-            #include "src/types.h"
+            #include "src/types.h" // includes fb.h
 
             uint4 frag(v2f_customrendertexture i) : SV_Target {
-                STATE_TEX.GetDimensions(s_dim.x, s_dim.y);
-
+                _SelfTexture2D.GetDimensions(s_dim.x, s_dim.y);
+                _Data_MTD_R.GetDimensions(m_dim.x, m_dim.y);
                 uint2 pos = i.globalTexcoord.xy * s_dim;
 
                 if (_Init && _InitRaw) {
-                    return _Data_RAM_RAW[pos];
+                    float3 raw[6];
+                    for (uint off = 0; off < 6; off++) {
+                        raw[off] = _Data_RAM_RAW[pos + uint2((off * s_dim.x) % (s_dim.x*3), (off / 3) * s_dim.y)].rgb;
+                    }
+                    uint4 data = unpack_uint4(raw);
+                    return data;
                 }
 
                 decode_for_commit();

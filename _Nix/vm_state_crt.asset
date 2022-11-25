@@ -14,11 +14,11 @@ CustomRenderTexture:
   m_DownscaleFallback: 0
   serializedVersion: 3
   m_Width: 2048
-  m_Height: 2048
+  m_Height: 4096
   m_AntiAliasing: 1
   m_MipCount: -1
   m_DepthFormat: 0
-  m_ColorFormat: 44
+  m_ColorFormat: 40
   m_MipMap: 0
   m_GenerateMips: 1
   m_SRGB: 0
@@ -45,23 +45,13 @@ CustomRenderTexture:
   m_UpdateZoneSpace: 1
   m_CurrentUpdateZoneSpace: 1
   m_UpdateZones:
-  - updateZoneCenter: {x: 64, y: 1984, z: 0.5}
-    updateZoneSize: {x: 128, y: 128, z: 1}
+  - updateZoneCenter: {x: 32, y: 4064, z: 0.5}
+    updateZoneSize: {x: 64, y: 64, z: 1}
     rotation: 0
     passIndex: 0
     needSwap: 1
-  - updateZoneCenter: {x: 1024, y: 1024, z: 0.5}
-    updateZoneSize: {x: 2048, y: 2048, z: 1}
-    rotation: 0
-    passIndex: 1
-    needSwap: 1
-  - updateZoneCenter: {x: 64, y: 1984, z: 0.5}
-    updateZoneSize: {x: 128, y: 128, z: 1}
-    rotation: 0
-    passIndex: 0
-    needSwap: 1
-  - updateZoneCenter: {x: 1024, y: 1024, z: 0.5}
-    updateZoneSize: {x: 2048, y: 2048, z: 1}
+  - updateZoneCenter: {x: 1024, y: 2048, z: 0.5}
+    updateZoneSize: {x: 2048, y: 4096, z: 1}
     rotation: 0
     passIndex: 1
     needSwap: 1

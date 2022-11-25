@@ -8,7 +8,8 @@ public class NixControl : UdonSharpBehaviour
 {
     public CustomRenderTexture CRT;
 
-    public UdonBehaviour Dial, Debug;
+    public UdonBehaviour Debug;
+    public Dial Dial;
     public Text StatusText;
     public Text UartOut;
 
@@ -81,10 +82,20 @@ public class NixControl : UdonSharpBehaviour
 		// CRT.material.SetInt("_DoTick", CRT.material.GetInt("_DoTick") + 1);
     }
 
+    public void _BootLinuxSecondary()
+    {
+        if (Dial.CurrentState != 2) return;
+        Dial.SetState(1, false);
+        CRT.material.SetInt("_UdonUARTInChar", '\n');
+        CRT.material.SetInt("_UdonUARTInTag", 1);
+        CRT.material.SetFloat("_Init", 0);
+        CRT.material.SetFloat("_InitRaw", 0);
+    }
+
     public void DialEnable()
     {
-        var state = (int)Dial.GetProgramVariable("NextState");
-        run = state == 1;
+        var state = Dial.NextState;
+        run = state > 0;
 
         if (!run)
         {
@@ -109,9 +120,25 @@ public class NixControl : UdonSharpBehaviour
             CurProgram.ApplyTexture();
             Debug.SetProgramVariable("RenderCam", true);
             CRT.material.SetInt("_Init", 1);
-            disableInit = 2;
             CRT.material.SetInt("_DoTick", 0);
             CRT.updateMode = CustomRenderTextureUpdateMode.Realtime;
+
+            if (state == 2)
+            {
+                // Load booted linux env
+                CRT.material.SetFloat("_InitRaw", 1);
+                Debug.SetProgramVariable("UartPtr", 0);
+                Debug.SetProgramVariable("UartTag", 1);
+                Debug.SetProgramVariable("newlines", 0);
+                Debug.SetProgramVariable("linelength", 0);
+                Debug.SetProgramVariable("LocalText", "");
+                SendCustomEventDelayedSeconds("_BootLinuxSecondary", 1);
+            }
+            else
+            {
+                CRT.material.SetFloat("_InitRaw", 0);
+                disableInit = 2;
+            }
         }
     }
 

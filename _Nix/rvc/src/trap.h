@@ -145,31 +145,32 @@ void handle_irq_and_trap(inout ins_ret ret, uint mip_override) {
     bool trap = ret.trap.en;
     uint mip_reset = MIP_ALL;
     uint mie = read_csr_raw(CSR_MIE);
+    bool irq = false;
 
     if (!trap) {
+        irq = true;
         uint mirq = mip_override & mie;
-#define HANDLE(mip, ttype) case mip: mip_reset = mip; ret.trap.en = true; ret.trap.type = ttype; break;
-        switch (mirq & MIP_ALL) {
+        if (false) {}
+#define HANDLE(mip, ttype) else if (mirq & mip) { mip_reset = mip; ret.trap.en = true; ret.trap.type = ttype; }
             HANDLE(MIP_MEIP, trap_MachineExternalInterrupt)
             HANDLE(MIP_MSIP, trap_MachineSoftwareInterrupt)
             HANDLE(MIP_MTIP, trap_MachineTimerInterrupt)
             HANDLE(MIP_SEIP, trap_SupervisorExternalInterrupt)
             HANDLE(MIP_SSIP, trap_SupervisorSoftwareInterrupt)
             HANDLE(MIP_STIP, trap_SupervisorTimerInterrupt)
-        }
 #undef HANDLE
     }
 
-    bool irq = mip_reset != MIP_ALL;
-    if (trap || irq) {
+    if (ret.trap.en) {
         uint new_mip = mip_override;
         bool handled = handle_trap(ret, irq, mie);
         if (handled) {
             cpu.trap_count++;
         }
-        if (handled && irq) {
+        if (handled && irq && (mip_reset & 0x0A0) == 0) {
             // reset MIP value since IRQ was handled
-            // this implies that mip_reset is not MIP_ALL
+            // (MTIP/MSIP will be reset by write to mtimecmp instead)
+            // 'irq' implies that mip_reset is not MIP_ALL
             new_mip = mip_override & (~mip_reset);
         }
         write_csr_raw(CSR_MIP, new_mip);

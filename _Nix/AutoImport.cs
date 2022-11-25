@@ -48,9 +48,12 @@ public static class AutoImport
 
             if (FilesToWatch[i].EndsWith(".h")) continue;
 
-            if (File.Exists(FilesToWatch[i] + ".pp"))
+            if (!(FilesToWatch[i].EndsWith(".pp") ||
+                FilesToWatch[i].EndsWith(".shader") ||
+                FilesToWatch[i].EndsWith(".cginc") ||
+                FilesToWatch[i].EndsWith(".p")))
             {
-                FilesToWatch[i] = FilesToWatch[i] + ".pp";
+                continue;
             }
             if (!File.Exists(FilesToWatch[i]))
             {
@@ -82,8 +85,10 @@ public static class AutoImport
 
     static void OnUpdate()
     {
-        if (EditorApplication.isPlaying) return;
-        if (Application.isPlaying) return;
+        //if (EditorApplication.isPlaying) return;
+        //if (Application.isPlaying) return;
+
+        var importallpp = false;
 
         for (int i = 0; i < hasChange.Length; i++)
         {
@@ -92,7 +97,11 @@ public static class AutoImport
                 Debug.Log("[AutoImport] Asset changed: " + FilesToWatch[i]);
                 hasChange[i] = false;
 
-                if (FilesToWatch[i].EndsWith(".pp"))
+                if (FilesToWatch[i].EndsWith(".p"))
+                {
+                    importallpp = true;
+                }
+                else if (FilesToWatch[i].EndsWith(".pp"))
                 {
                     var gen = FilesToWatch[i].Substring(0, FilesToWatch[i].Length - 3);
                     RunPerlPP(FilesToWatch[i], gen);
@@ -101,6 +110,19 @@ public static class AutoImport
                 else
                 {
                     AssetDatabase.ImportAsset(FilesToWatch[i]);
+                }
+            }
+        }
+
+        if (importallpp)
+        {
+            foreach (var item in FilesToWatch)
+            {
+                if (item.EndsWith(".pp"))
+                {
+                    var gen = item.Substring(0, item.Length - 3);
+                    RunPerlPP(item, gen);
+                    AssetDatabase.ImportAsset(gen);
                 }
             }
         }

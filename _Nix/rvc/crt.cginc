@@ -1,5 +1,6 @@
 // Unity built-in shader source. Copyright (c) 2016 Unity Technologies. MIT license (see license.txt)
 // modified: change _SelfTexture2D to Texture2D<uint4>, from sampler2D
+//           removed some rotation/3d specific code which is unused in vert shader
 
 #ifndef UNITY_CUSTOM_TEXTURE_INCLUDED
 #define UNITY_CUSTOM_TEXTURE_INCLUDED
@@ -142,10 +143,10 @@ v2f_customrendertexture CustomRenderTextureVertexShader(appdata_customrendertext
     uint vertexID = IN.vertexID % 6;
     float3 updateZoneCenter = CustomRenderTextureCenters[primitiveID].xyz;
     float3 updateZoneSize = CustomRenderTextureSizesAndRotations[primitiveID].xyz;
-    float rotation = CustomRenderTextureSizesAndRotations[primitiveID].w * UNITY_PI / 180.0f;
+    //float rotation = CustomRenderTextureSizesAndRotations[primitiveID].w * UNITY_PI / 180.0f;
 
 #if !UNITY_UV_STARTS_AT_TOP
-    rotation = -rotation;
+    //rotation = -rotation;
 #endif
 
     // Normalize rect if needed
@@ -167,7 +168,7 @@ v2f_customrendertexture CustomRenderTextureVertexShader(appdata_customrendertext
     // Compute quad vertex position
     float2 clipSpaceCenter = updateZoneCenter.xy * 2.0 - 1.0;
     float2 pos = vertexPositions[vertexID] * updateZoneSize.xy;
-    pos = CustomRenderTextureRotate2D(pos, rotation);
+    //pos = CustomRenderTextureRotate2D(pos, rotation);
     pos.x += clipSpaceCenter.x;
 #if UNITY_UV_STARTS_AT_TOP
     pos.y += clipSpaceCenter.y;
@@ -178,20 +179,20 @@ v2f_customrendertexture CustomRenderTextureVertexShader(appdata_customrendertext
     // For 3D texture, cull quads outside of the update zone
     // This is neeeded in additional to the preliminary minSlice/maxSlice done on the CPU because update zones can be disjointed.
     // ie: slices [1..5] and [10..15] for two differents zones so we need to cull out slices 0 and [6..9]
-    if (CustomRenderTextureIs3D > 0.0)
-    {
-        int minSlice = (int)(updateZoneCenter.z - updateZoneSize.z * 0.5);
-        int maxSlice = minSlice + (int)updateZoneSize.z;
-        if (_CustomRenderTexture3DSlice < minSlice || _CustomRenderTexture3DSlice >= maxSlice)
-        {
-            pos.xy = float2(1000.0, 1000.0); // Vertex outside of ncs
-        }
-    }
+    // if (CustomRenderTextureIs3D > 0.0)
+    // {
+    //     int minSlice = (int)(updateZoneCenter.z - updateZoneSize.z * 0.5);
+    //     int maxSlice = minSlice + (int)updateZoneSize.z;
+    //     if (_CustomRenderTexture3DSlice < minSlice || _CustomRenderTexture3DSlice >= maxSlice)
+    //     {
+    //         pos.xy = float2(1000.0, 1000.0); // Vertex outside of ncs
+    //     }
+    // }
 
     OUT.vertex = float4(pos, 0.0, 1.0);
     OUT.primitiveID = asuint(CustomRenderTexturePrimitiveIDs[primitiveID]);
-    OUT.localTexcoord = float3(texCoords[vertexID], CustomRenderTexture3DTexcoordW);
-    OUT.globalTexcoord = float3(pos.xy * 0.5 + 0.5, CustomRenderTexture3DTexcoordW);
+    OUT.localTexcoord = float3(texCoords[vertexID], 0);
+    OUT.globalTexcoord = float3(pos.xy * 0.5 + 0.5, 0);
 #if UNITY_UV_STARTS_AT_TOP
     OUT.globalTexcoord.y = 1.0 - OUT.globalTexcoord.y;
 #endif

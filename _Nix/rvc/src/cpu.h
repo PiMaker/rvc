@@ -4,7 +4,7 @@
 cpu_t cpu_init() {
     cpu_t ret = (cpu_t)0;
 
-    ret.xreg11 = 0x1020; // linux? device tree?
+    ret.xreg[11] = 0x1020; // device tree base
     ret.pc = 0x80000000;
     ret.reservation_en = false;
 
@@ -12,6 +12,8 @@ cpu_t cpu_init() {
     ret.uart.lcr_mcr_lsr_scr = 0x00200000; // LSR_THR_EMPTY is set
 
     ret.csr.privilege = 3; // PRIV_MACHINE
+
+    ret.start_time_ref = _Time.y;
 
     return ret;
 }
@@ -23,15 +25,6 @@ void cpu_tick() {
     }
     cpu.debug_do_tick = _DoTick;
 
-    /* cpu.debug_arb_0 = */
-    /* cpu.debug_arb_1 = */
-    /* cpu.debug_arb_2 = */
-    /* cpu.debug_arb_3 = */
-    /* cpu.debug_arb_4 = */
-    /* cpu.debug_arb_5 = */
-    /* cpu.debug_arb_6 = */
-    /* cpu.debug_arb_7 = 0; */
-
     cpu.clock++;
     emulate();
 
@@ -42,7 +35,6 @@ void cpu_tick() {
 
     if (cpu.stall) {
         cpu.stall_count++;
-        return;
     }
 }
 

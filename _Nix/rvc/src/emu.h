@@ -576,7 +576,7 @@ ins_ret ins_select(uint ins_word, inout ins_ret ret) {
         RUN(sfence_vma, 0x12000073, ins_FormatEmpty)
     }
     ins_masked = ins_word & 0xffffffff;
-    [forcecase]
+    [branch]
     switch (ins_masked) {
         RUN(ebreak, 0x00100073, ins_FormatEmpty)
         RUN(ecall, 0x00000073, ins_FormatEmpty)
@@ -596,6 +596,7 @@ ins_ret ins_select(uint ins_word, inout ins_ret ret) {
 void emulate() {
     uint ins_word = 0;
     ins_ret ret = ins_ret_noop();
+    bool mtip_reset = false;
     if ((cpu.pc & 0x3) == 0) {
         uint ins_addr = mmu_translate(ret, cpu.pc, MMU_ACCESS_FETCH);
 
@@ -618,7 +619,8 @@ void emulate() {
                         if (imc == 0) {
                             cpu.memop_src_p = phys;
                         } else {
-                            cpu.memop_dst_p = phys;
+                            // Note: This only allows targets within RAM
+                            cpu.memop_dst_p = phys & 0x7fffffff;
                         }
                     }
                 }
@@ -627,12 +629,17 @@ void emulate() {
             if (ret.mem_wr_size && !ret.trap.en) {
                 uint write_addr = mmu_translate(ret, ret.mem_wr_addr, MMU_ACCESS_WRITE);
                 if (!ret.trap.en) {
-                        mem_set(write_addr, ret.mem_wr_value, ret.mem_wr_size / 8);
+                    mem_set(write_addr, ret.mem_wr_value, ret.mem_wr_size / 8);
+
+                    // MTIP (machine timer interrupt pending) resets when mtimecmp is written
+                    if (write_addr == 0x02004000) {
+                        mtip_reset = true;
+                    }
                 }
             }
 
             if (!ret.trap.en && ret.write_reg) {
-                #define C(x) case x: cpu.xreg##x = ret.write_val; break;
+                #define C(x) case x: cpu.xreg[x] = ret.write_val; break;
                 if (ret.write_reg < 16) {
                     [flatten]
                     switch (ret.write_reg) {
@@ -665,17 +672,22 @@ void emulate() {
         mip_override |= MIP_MSIP;
     }
 
-    cpu.clint.mtime_lo++;
-    cpu.clint.mtime_hi += cpu.clint.mtime_lo == 0 ? 1 : 0;
+    double mtime = (double)_Time.x * 1000000.0 * 0.1;
+    cpu.clint.mtime_lo = (uint)(floor(glsl_mod(mtime, 4294967296.0))); // & 0xffffffff
+    cpu.clint.mtime_hi = (uint)(mtime / 4294967296.0); // >> 32
 
     if ((cpu.clint.mtimecmp_lo != 0 || cpu.clint.mtimecmp_hi != 0) && (cpu.clint.mtime_hi > cpu.clint.mtimecmp_hi || (cpu.clint.mtime_hi == cpu.clint.mtimecmp_hi && cpu.clint.mtime_lo >= cpu.clint.mtimecmp_lo))) {
         mip_override |= MIP_MTIP;
     }
+    [flatten]
+    if (mtip_reset) {
+        mip_override &= ~MIP_MTIP;
+    }
 
     uart_tick();
-    if (cpu.uart.interrupting) {
-        mip_override |= MIP_SEIP;
-    }
+    //if (cpu.uart.interrupting) {
+    //    mip_override |= MIP_SEIP;
+    //}
 
     /* if (ret.trap.en && cpu.clock <= 1) { */
     /*     cpu.stall = STALL_ILLEGAL_ENTRY_POINT; */

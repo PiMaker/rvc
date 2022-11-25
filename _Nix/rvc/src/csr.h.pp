@@ -46,6 +46,14 @@
 #define CSR_MEMOP_DST 0x0b2
 #define CSR_MEMOP_N 0x0b3
 
+#define CSR_PLAYER_ID 0xbe
+#define CSR_RNG 0x0bf
+
+#define CSR_NET_TX_BUF_ADDR 0x0c0
+#define CSR_NET_TX_BUF_SIZE_AND_SEND 0x0c1
+#define CSR_NET_RX_BUF_ADDR 0x0c2
+#define CSR_NET_RX_BUF_READY 0x0c3
+
 bool has_csr_access_privilege(uint addr) {
     uint privilege = (addr >> 8) & 0x3;
     return privilege <= cpu.csr.privilege;
@@ -57,7 +65,7 @@ uint read_csr_raw(uint address) {
 
     uint read_mask = 0xffffffff;
 
-    [branch]
+    [forcecase]
     switch (address) {
         case CSR_MISA: return 0x40141101; // 0b01000000000101000001000100000001 = RV32AIMSU
         case CSR_SSTATUS: address = CSR_MSTATUS; read_mask = 0x000de162; break;
@@ -68,6 +76,8 @@ uint read_csr_raw(uint address) {
         case CSR_CYCLE: return cpu.clock;
         case CSR_MHARTID: return 0;
         case CSR_SATP: return (cpu.mmu.mode << 31) | cpu.mmu.ppn;
+        case CSR_RNG: return xorshift(asuint(_Time.w));
+        case CSR_PLAYER_ID: return _PlayerID;
     }
 
     uint ret;
@@ -91,7 +101,7 @@ void write_csr_raw(uint address, uint value) {
     uint what = value;
     uint modify_mask = 0;
     ins_ret nop = ins_ret_noop();
-    [branch]
+    [forcecase]
     switch (address) {
         case CSR_SSTATUS:
             where = CSR_MSTATUS;
@@ -119,6 +129,7 @@ void write_csr_raw(uint address, uint value) {
             return;
         case CSR_MEMOP_OP:
             cpu.stall = STALL_MEMOP_COPY;
+            cpu.debug_arb_0++;
             return;
     };
 

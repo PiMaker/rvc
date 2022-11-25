@@ -3,8 +3,12 @@
 
 
 
-/* must match set/line count above, shift by two to ignore byte offset */
-#define RAM_L1_TAG(a) ((a >> 2) & 0xf)
+#define RAM_ADDR(lin) uint2(lin % 2048, 64 + (lin / 2048))
+#define RAM_MAX (2048 * (4096 - 64) * 4 * 4)
+
+
+/* shift by two to ignore byte offset */
+#define RAM_L1_ARRAY_IDX(a) (((a >> 2) & 127) | (((a >> 11) & 0x3) << 7))
 
 
 #define SHIFT_RBR 0
@@ -38,12 +42,12 @@ void uart_update_iir() {
     UART_SET1(IIR, (rx_ip ? IIR_RD_AVAILABLE : (thre_ip ? IIR_THR_EMPTY : IIR_NO_INTERRUPT)));
 }
 
-void put_char_to_udon(uint c) {
+void put_byte_to_fb(uint c) {
     cpu.uart_buffer.ptr++;
-    if (cpu.uart_buffer.ptr == 64) {
-        cpu.uart_buffer.ptr = 0;
+    if (cpu.uart_buffer.ptr == 63) {
+        cpu.stall = STALL_UART;
     }
-    [branch]
+    [forcecase]
     switch (cpu.uart_buffer.ptr) {
 case 0: cpu.uart_buffer.buf0 = c; break;
 case 1: cpu.uart_buffer.buf1 = c; break;
@@ -111,36 +115,28 @@ case 62: cpu.uart_buffer.buf62 = c; break;
 case 63: cpu.uart_buffer.buf63 = c; break;
 
     }
-
-    // check for overflow on Udon side, stall if necessary
-    if (cpu.uart_buffer.ptr == _UdonUARTPtr - 1 ||
-        (cpu.uart_buffer.ptr == 63 && _UdonUARTPtr == 0))
-    {
-        cpu.stall = STALL_UART;
-    }
 }
 
 void uart_tick() {
-    bool rx_ip = false;
+    //bool rx_ip = false;
 
-    if ((cpu.clock % 128) == 0) {
+    if ((cpu.clock & 0xff) == 0xff) {
         if (cpu.uart.input_tag != _UdonUARTInTag && UART_GET1(RBR) == 0) {
             cpu.uart.input_tag = _UdonUARTInTag;
             if (_UdonUARTInChar != 0) {
                 UART_SET1(RBR, _UdonUARTInChar);
-                cpu.debug_arb_0 = _UdonUARTInChar;
                 UART_SET2(LSR, (UART_GET2(LSR) | LSR_DATA_AVAILABLE));
                 uart_update_iir();
-                if ((UART_GET1(IER) & IER_RXINT_BIT) != 0) {
-                    rx_ip = true;
-                }
+                //if ((UART_GET1(IER) & IER_RXINT_BIT) != 0) {
+                //    rx_ip = true;
+                //}
             }
         }
     }
 
     uint thr = UART_GET1(THR);
-    if ((cpu.clock % 16) == 0 && thr != 0) {
-        put_char_to_udon(thr);
+    if (thr != 0) {
+        put_byte_to_fb(thr);
         UART_SET1(THR, 0);
         UART_SET2(LSR, (UART_GET2(LSR) | LSR_THR_EMPTY));
         uart_update_iir();
@@ -149,12 +145,12 @@ void uart_tick() {
         }
     }
 
-    if (!cpu.uart.interrupting && (cpu.uart.thre_ip || rx_ip)) {
-        cpu.uart.interrupting = true;
-        cpu.uart.thre_ip = false;
-    } else {
-        cpu.uart.interrupting = false;
-    }
+    // if (!cpu.uart.interrupting && (cpu.uart.thre_ip || rx_ip)) {
+    //     cpu.uart.interrupting = true;
+    //     cpu.uart.thre_ip = false;
+    // } else {
+    //     cpu.uart.interrupting = false;
+    // }
 }
 
 #endif
