@@ -113,8 +113,8 @@ fn main() {
 
     let y = idx / width;
     println!("Saving result... (required size: x={} y={})", width, y + 1);
-    fr.save(input.clone().with_extension("r.bmp")).unwrap();
-    fg.save(input.clone().with_extension("g.bmp")).unwrap();
-    fb.save(input.clone().with_extension("b.bmp")).unwrap();
-    fa.save(input.clone().with_extension("a.bmp")).unwrap();
+    fr.save(input.clone().with_extension("r.png")).unwrap();
+    fg.save(input.clone().with_extension("g.png")).unwrap();
+    fb.save(input.clone().with_extension("b.png")).unwrap();
+    fa.save(input.clone().with_extension("a.png")).unwrap();
 }

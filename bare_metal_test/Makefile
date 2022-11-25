@@ -5,7 +5,7 @@ PREFIX ?= ../buildroot-2021.05/output/host/bin/riscv32-buildroot-linux-gnu-
 CC := $(PREFIX)cc
 AS := $(PREFIX)as
 LD := $(PREFIX)ld
-OBJDUMP := $(PREFIX)objcopy
+OBJCOPY := $(PREFIX)objcopy
 
 SRCS := $(wildcard *.S)
 SRCS += $(wildcard *.c)
@@ -23,7 +23,7 @@ $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) $(OBJS) -o $@ $(LOADLIBES) $(LDLIBS)
 
 $(TARGET).img: $(TARGET)
-	riscv32-elf-objcopy -O binary $< $@
+	$(OBJCOPY) -O binary $< $@
 
 .PHONY: clean
 clean:

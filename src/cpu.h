@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include "types.h"
 #include "mem.h"
 #include "emu.h"
@@ -26,6 +27,9 @@ cpu_t cpu_init(uint8_t *mem, uint8_t *dtb, uint8_t *mtd, uint mtd_size) {
     ret.mtd = mtd;
     ret.mtd_size = mtd_size;
 
+    ret.net.netrx = malloc(4096);
+    ret.net.nettx = malloc(4096);
+
     ret.clint.msip = false;
     ret.clint.mtimecmp_lo = 0;
     ret.clint.mtimecmp_hi = 0;
@@ -39,6 +43,8 @@ cpu_t cpu_init(uint8_t *mem, uint8_t *dtb, uint8_t *mtd, uint mtd_size) {
 
     ret.mmu.mode = 0;
     ret.mmu.ppn = 0;
+
+    ret.start_time_ref = _Time;
 
     return ret;
 }

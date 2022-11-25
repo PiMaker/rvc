@@ -4,7 +4,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  ram (rwx) : ORIGIN = 0x80000000, LENGTH = 0x80000
+  ram (rwx) : ORIGIN = 0x80000000, LENGTH = 0x100000
 }
 
 SECTIONS
@@ -17,14 +17,18 @@ SECTIONS
   } > ram
 
   .stack (NOLOAD) : {
-    . = . + 0x20000;
+    . = . + 0x70000;
     PROVIDE(_end_stack = .);
   } > ram
 
   .heap (NOLOAD) : {
-    PROVIDE(_begin_heap = .);
-    . = . + 0x40000;
+    . = . + 0x70000;
     PROVIDE(_end_heap = .);
+  } > ram
+
+  .textbuf (NOLOAD) : {
+    . = . + 0x10000;
+    PROVIDE(_end_textbuf = .);
   } > ram
 
 }

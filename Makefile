@@ -3,6 +3,8 @@ SRC_DIRS ?= ./src ./tinypngout
 
 CC=clang
 
+BUILDROOT := "buildroot-2022.02.1"
+
 SRCS := $(shell find $(SRC_DIRS) -name '*.cpp' -or -name '*.c' -or -name '*.s')
 OBJS := $(addsuffix .o,$(basename $(SRCS)))
 DEPS := $(OBJS:.o=.d)
@@ -10,12 +12,18 @@ DEPS := $(OBJS:.o=.d)
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-Q=$(CURDIR)/buildroot-2021.05/output/host/bin/riscv32-buildroot-linux-gnu-
+Q=$(CURDIR)/$(BUILDROOT)/output/host/bin/riscv32-buildroot-linux-gnu-
 
 CFLAGS ?= -g -O2
 
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -I./elfy/elfy.h -I./tinypngout/TinyPngOut.h $(OBJS) -o $@ $(LOADLIBES) $(LDLIBS) -L./elfy/target/release/ -Wl,--no-as-needed -ldl -lpthread -lelfy
+.PHONY: $(TARGET)
+$(TARGET):
+	touch src/main.c
+	rm -f src/main.o
+	$(MAKE) $(TARGET)-real
+
+$(TARGET)-real: $(OBJS)
+	$(CC) $(LDFLAGS) -I./elfy/elfy.h -I./tinypngout/TinyPngOut.h $(OBJS) -o $(TARGET) $(LOADLIBES) $(LDLIBS) -L./elfy/target/release/ -Wl,--no-as-needed -ldl -lpthread -lelfy -lm
 
 -include $(DEPS)
 
@@ -28,11 +36,9 @@ PAYLOAD=rust_payload/target/riscv32ima-unknown-none-elf/release/rust_payload.bin
 LINUX_PAYLOAD=linux/arch/riscv/boot/Image
 RAYTRACE_PAYLOAD=rust_raytrace/target/riscv32ima-unknown-none-elf/release/rust_raytrace.bin
 
-BUILDROOT_MARKER=buildroot-2021.05/build.marker
+BUILDROOT_MARKER=$(BUILDROOT)/build.marker
 $(BUILDROOT_MARKER):
-	$(MAKE) -C buildroot-2021.05
-	cd buildroot-2021.05 && cp init output/target/ && cp pi.js output/target/
-	$(MAKE) -C buildroot-2021.05
+	if [ ! -f $(BUILDROOT_MARKER) ]; then $(MAKE) -C $(BUILDROOT); fi
 	touch $@
 
 $(PAYLOAD): $(shell find rust_payload/src -type f)
@@ -66,7 +72,7 @@ rust_payload.elf: $(PAYLOAD) $(BUILDROOT_MARKER)
 
 .PHONY: $(LINUX_PAYLOAD)
 $(LINUX_PAYLOAD): linux $(BUILDROOT_MARKER)
-	cd linux && (git am ../linux-_pi_-patches-for-rvc.patch || true)
+	# cd linux && (git apply ../linux-_pi_-patches-for-rvc.patch || true)
 	cd linux && \
 		env CROSS_COMPILE=$(Q) \
 			CFLAGS="-march=rv32ima -mabi=ilp32" \
@@ -74,12 +80,14 @@ $(LINUX_PAYLOAD): linux $(BUILDROOT_MARKER)
 			ARCH=riscv \
 			KCONFIG_ALLCONFIG=../linux.config \
 				make allnoconfig
+	cd linux && ./scripts/clang-tools/gen_compile_commands.py
 	cd linux && \
 		env CROSS_COMPILE=$(Q) \
 			CFLAGS="-march=rv32ima -mabi=ilp32" \
 			LDFLAGS="-march=rv32ima -mabi=ilp32" \
 			ARCH=riscv \
-				intercept-build make -j$(shell nproc)
+				make -j$(shell nproc)
+	cd linux && ./scripts/clang-tools/gen_compile_commands.py
 
 linux_payload.bin: linux_payload.elf
 	cp $(OPENSBI_BUILD)/fw_payload.bin ./linux_payload.bin
@@ -99,9 +107,17 @@ linux_payload.elf: $(LINUX_PAYLOAD) $(BUILDROOT_MARKER)
 run: fw_payload.bin $(TARGET) dts.dtb
 	./rvc -b fw_payload.bin -d dts.dtb
 
+.PHONY: run-v1
 run-v1: fw_payload.bin $(TARGET) dts.dtb
 	./rvc -b fw_payload.bin -d dts.dtb -v1
 
+.PHONY: run-network
+run-network: linux_payload.bin $(TARGET) dts.dtb
+	tmux new -s rvc-network -d "./rvc -b linux_payload.bin -d dts.dtb -n /tmp/rvc-test.sock -i ./$(BUILDROOT)/output/images/rootfs.romfs -f"
+	tmux split-window -t rvc-network "./rvc -b linux_payload.bin -d dts.dtb -N /tmp/rvc-test.sock -i ./$(BUILDROOT)/output/images/rootfs.romfs -f"
+	tmux select-layout -t rvc-network even-horizontal
+	tmux attach -t rvc-network
+	tmux kill-session -t rvc-network || true
 
 .PHONY: clean
 clean:

@@ -8,9 +8,11 @@
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/time.h>
 #include "types.h"
 #include "cpu.h"
 #include "uart.h"
+#include "net.h"
 #include <termios.h>
 
 #include "../elfy/elfy.h"
@@ -59,30 +61,47 @@ uint8_t* get_mmap_ptr(const char* filename) {
 }
 
 void usage() {
-    printf("Usage: rvc (-e <ELF binary>|-b <raw binary>) [-d <device tree binary>] [-i <initramfs>] [-v (0|1|2|3|4)] [-s] [-t] [-x]\n");
+    printf("Usage: rvc (-e <ELF binary>|-b <raw binary>) [-d <device tree binary>] [-i <initramfs>] [-v (0|1|2|3|4)] [-s (single step)] [-t (trace)] [-x (allow exit ecall)] [-f (signal forward)] [-n <server socket path> / -N <client socket path>]\n");
     exit(EXIT_FAILURE);
 }
 
+static bool signal_forward = false;
+#define MAX_INPUT_STACK 128
+static char input_stack[MAX_INPUT_STACK];
+static uint input_stack_idx = 0;
+static time_t last_signal_time = 0;
+
 void term(int signum)
 {
-   printf("\n\nCaught signal!\n");
-   buf_on();
-   cpu_dump(&cpu);
-   printf("\n");
+    if (signal_forward) {
+        time_t cur_time = time(NULL);
+        if (cur_time - last_signal_time >= 1) {
+            last_signal_time = cur_time;
+            if (input_stack_idx > (MAX_INPUT_STACK - 2)) return;
+            /* input_stack[input_stack_idx++] = 0x1b; */
+            input_stack[input_stack_idx++] = 0x03; /* ETX / Ctrl-C */
+            return;
+        }
+    }
 
-   /* ins_ret ret; */
-   /* for (uint i = 0x10000; i < 0x11000; i += 4) { */
-   /*     uint pa = mmu_translate(&ret, i, MMU_ACCESS_READ); */
-   /*     uint val = mem_get_word(&cpu, pa); */
-   /*     printf("%05x: %08x\n", i, val); */
-   /* } */
+    printf("\n\nCaught signal!\n");
+    buf_on();
+    cpu_dump(&cpu);
+    printf("\n");
 
-   /* print_tracebuf(); */
+    /* ins_ret ret; */
+    /* for (uint i = 0x10000; i < 0x11000; i += 4) { */
+    /*     uint pa = mmu_translate(&ret, i, MMU_ACCESS_READ); */
+    /*     uint val = mem_get_word(&cpu, pa); */
+    /*     printf("%05x: %08x\n", i, val); */
+    /* } */
 
-   write_ram_as_png("ram.png");
+    /* print_tracebuf(); */
 
-   /* printf("\n"); */
-   exit(EXIT_FAILURE);
+    /* write_ram_as_png("ram.png"); */
+
+    /* printf("\n"); */
+    exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
@@ -92,12 +111,18 @@ int main(int argc, char *argv[]) {
     char *initrd = NULL;
     uint mtd_size = 0;
 
+    char *socket = NULL;
+    bool server = false;
+
     int c;
     bool trace = false;
 
-    while ((c = getopt (argc, argv, "e:b:d:v:i:stx")) != -1) {
+    while ((c = getopt (argc, argv, "e:b:d:v:i:n:N:stxf")) != -1) {
         switch (c)
         {
+            case 'f':
+                signal_forward = true;
+                break;
             case 'x':
                 allow_ecall_exit = true;
                 break;
@@ -122,6 +147,14 @@ int main(int argc, char *argv[]) {
             case 'i':
                 initrd = optarg;
                 break;
+            case 'n':
+                socket = optarg;
+                server = true;
+                break;
+            case 'N':
+                socket = optarg;
+                server = false;
+                break;
             case '?':
             default:
                 usage();
@@ -133,6 +166,7 @@ int main(int argc, char *argv[]) {
     }
 
     uint8_t *mem = malloc(MEM_SIZE);
+    memset(mem, 0, MEM_SIZE);
     if (elf) {
         if (load_elf(elf, strlen(elf) + 1, mem, MEM_SIZE, VERBOSE >= 1)) {
             exit(EXIT_FAILURE+1);
@@ -148,6 +182,10 @@ int main(int argc, char *argv[]) {
         uint8_t *mtd_ptr = get_mmap_ptr(initrd);
         mtd_size = get_filesize(initrd);
         memcpy(mtd, mtd_ptr, mtd_size);
+    }
+
+    if (socket) {
+        net_init(socket, server);
     }
 
     struct sigaction action;
@@ -170,11 +208,15 @@ int main(int argc, char *argv[]) {
     buf_off();
 
     // LIMITER (set to high number to ignore)
-    const unsigned long restr = 200000*1000;
+    const unsigned long restr = 200000*10000;
     unsigned long cur = 0;
     unsigned long t = time(NULL);
 
     uint init_verbose = VERBOSE;
+
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    uint64_t base_clock = now.tv_sec;
 
     while (1) {
         cur++;
@@ -186,6 +228,10 @@ int main(int argc, char *argv[]) {
         if (cur >= restr) {
             continue;
         }
+
+        gettimeofday(&now, NULL);
+        _Time = (float)((now.tv_sec - base_clock) * 1000000 + now.tv_usec) / 1000000.0f;
+        /* printf("Time: %lu %lu %.2f\n", now.tv_sec, now.tv_usec, _Time); */
 
         cpu_tick(&cpu);
 
@@ -226,8 +272,24 @@ int main(int argc, char *argv[]) {
             cpu_dump(&cpu);
 
         char input = 0;
-        if (!SINGLE_STEP && !uart_input_value && read(0, &input, 1)) {
-            uart_input_value = input;
+        if (!SINGLE_STEP && input_stack_idx < MAX_INPUT_STACK && read(0, &input, 1)) {
+            /* if (input == '+') { */
+            /*     VERBOSE = (VERBOSE + 1) % 5; */
+            /*     printf("\nVERBOSE = %d\n", VERBOSE); */
+            /* } else { */
+            /*     uart_input_value = input; */
+            /* } */
+            if (input)
+                input_stack[input_stack_idx++] = input;
+        }
+
+        if (!uart_input_value && input_stack_idx > 0) {
+            uart_input_value = input_stack[0];
+            input_stack_idx--;
+            // shift stack forward
+            for (int i = 0; i < input_stack_idx; i++) {
+                input_stack[i] = input_stack[i+1];
+            }
         }
 
         if (SINGLE_STEP) {

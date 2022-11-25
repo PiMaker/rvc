@@ -45,8 +45,7 @@ const uint MIP_ALL = MIP_MEIP | MIP_MTIP | MIP_MSIP | MIP_SEIP | MIP_STIP | MIP_
 #include "csr.h"
 
 // returns true if IRQ was handled or !is_interrupt
-bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
-    trap t = ret->trap;
+bool handle_trap(cpu_t *cpu, ins_ret *ret, trap t, bool is_interrupt) {
     uint current_privilege = cpu->csr.privilege;
 
     uint mdeleg = read_csr_raw(cpu, is_interrupt ? CSR_MIDELEG : CSR_MEDELEG);
@@ -131,6 +130,8 @@ bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
     }
 
     // NOTE: No user mode interrupt/exception handling!
+    // Importantly, this clears xIE in mstatus, so even if MIP isn't cleared,
+    // the interrupt will not be immediately reentrant.
     if (new_privilege == PRIV_MACHINE) {
         uint mie = (mstatus >> 3) & 1;
         uint new_status = (mstatus & ~0x1888) | (mie << 7) | (current_privilege << 11);
@@ -141,37 +142,39 @@ bool handle_trap(cpu_t *cpu, ins_ret *ret, bool is_interrupt) {
         write_csr_raw(cpu, CSR_SSTATUS, new_status);
     }
 
-    if (VERBOSE >= (is_interrupt ? 1 : 2))
+    if (VERBOSE >= (is_interrupt && t.type != trap_MachineTimerInterrupt && t.type != trap_SupervisorTimerInterrupt ? 1 : 2))
         printf("trap: type=%08x value=%08x (IRQ: %d) moved PC from @%08x (#%d) to @%08x (#%d)\n", t.type, t.value, is_interrupt, cpu->pc, current_privilege, ret->pc_val, new_privilege);
 
     return true;
 }
 
 void handle_irq_and_trap(cpu_t *cpu, ins_ret *ret) {
-    bool trap = ret->trap.en;
+    trap t = ret->trap;
     uint mip_reset = MIP_ALL;
     uint cur_mip = read_csr_raw(cpu, CSR_MIP);
+    bool irq = false;
 
-    if (!trap) {
+    if (!t.en) {
+        irq = true;
         uint mirq = cur_mip & read_csr_raw(cpu, CSR_MIE);
-#define HANDLE(mip, ttype) case mip: mip_reset = mip; ret->trap.en = true; ret->trap.type = ttype; break;
-        switch (mirq & MIP_ALL) {
-            HANDLE(MIP_MEIP, trap_MachineExternalInterrupt)
-            HANDLE(MIP_MSIP, trap_MachineSoftwareInterrupt)
-            HANDLE(MIP_MTIP, trap_MachineTimerInterrupt)
-            HANDLE(MIP_SEIP, trap_SupervisorExternalInterrupt)
-            HANDLE(MIP_SSIP, trap_SupervisorSoftwareInterrupt)
-            HANDLE(MIP_STIP, trap_SupervisorTimerInterrupt)
-        }
+        if (false) {}
+#define HANDLE(mip, ttype) else if (mirq & mip) { mip_reset = mip; t.en = true; t.type = ttype; }
+        HANDLE(MIP_MEIP, trap_MachineExternalInterrupt)
+        HANDLE(MIP_MSIP, trap_MachineSoftwareInterrupt)
+        HANDLE(MIP_MTIP, trap_MachineTimerInterrupt)
+        HANDLE(MIP_SEIP, trap_SupervisorExternalInterrupt)
+        HANDLE(MIP_SSIP, trap_SupervisorSoftwareInterrupt)
+        HANDLE(MIP_STIP, trap_SupervisorTimerInterrupt)
 #undef HANDLE
     }
 
-    bool irq = mip_reset != MIP_ALL;
-    if (trap || irq) {
-        bool handled = handle_trap(cpu, ret, irq);
+    if (t.en) {
+        bool handled = handle_trap(cpu, ret, t, irq);
         if (handled && irq) {
-            // reset MIP value since IRQ was handled
-            write_csr_raw(cpu, CSR_MIP, cur_mip & ~mip_reset);
+            // reset MIP value if IRQ other than timer was handled
+            // (MTIP/STIP will be reset by write to mtimecmp)
+            if ((mip_reset & 0x0A0) == 0)
+                write_csr_raw(cpu, CSR_MIP, cur_mip & ~mip_reset);
             if (VERBOSE >= 3)
                 printf("IRQ handled: old_mip=%03x new_mip=%03x\n", cur_mip, read_csr_raw(cpu, CSR_MIP));
         }

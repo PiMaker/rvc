@@ -6,23 +6,38 @@
     compatible = "riscv-virtio";
     model = "generic,rvc";
 
-    chosen {
-        bootargs = "console=hvc0 earlycon=sbi loglevel=15 debug single";
-        //stdout-path = "/uart@10000000";
+    aliases {
+        serial0 = &uart0;
     };
 
-    uart@10000000 {
-        interrupts = <0x1>;
-        interrupt-parent = <&irqchip>;
+    chosen {
+        bootargs = "root=mtd:root rootfstype=romfs ro init=/rvcinit phram.phram=root,0x40000000,256Mi console=hvc0 earlycon=sbi";
+        stdout-path = "/uart@10000000";
+    };
+
+    uart0: uart@10000000 {
+        /* interrupts = <0x9>; */
+        /* interrupt-parent = <&irqchip>; */
         clock-frequency = <0x384000>;
         reg = <0x0 0x10000000 0x0 0x100>;
         compatible = "ns16550a";
     };
 
+    rtc@3000000 {
+        compatible = "maxim,ds1742";
+        reg = <0x0 0x3000000 0x0 0x800>;
+    };
+
+    rvcnet {
+        compatible = "pi,rvcnet";
+    };
+
     cpus {
         #address-cells = <0x1>;
         #size-cells = <0x0>;
-        timebase-frequency = <0x1000000>;
+
+        /* 100/20 kHz, must match frequency in emu.h */
+        timebase-frequency = <0x1388>;
 
         cpu-map {
             cluster0 {
@@ -51,7 +66,7 @@
 
     memory@80000000 {
         device_type = "memory";
-        reg = <0x0 0x80000000 0x0 0x03B00000>; /* includes safety margin at end? */
+        reg = <0x0 0x80000000 0x0 0x07B00000>; /* includes safety margin at end? */
     };
 
     soc {

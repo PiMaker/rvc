@@ -172,17 +172,17 @@ impl Scene {
         self.lights.push(light);
     }
 
-    fn view_vector(x: i32, y: i32) -> Vector3 {
+    fn view_vector(x: i32, y: i32, superscale: u32) -> Vector3 {
         Vector3::new(
             x as f32,
             y as f32,
-            (crate::FB_WIDTH / crate::superscale() / 2) as f32,
+            (crate::FB_WIDTH / superscale / 2) as f32,
         )
         .normalized()
     }
 
-    pub fn raytrace(&self, x: i32, y: i32) -> Color {
-        let view = Self::view_vector(x, y);
+    pub fn raytrace(&self, x: i32, y: i32, superscale: u32) -> Color {
+        let view = Self::view_vector(x, y, superscale);
         self.do_raytrace(
             &Vector3::ZERO,
             &view,

@@ -1,8 +1,8 @@
 use core::panic::PanicInfo;
 use linked_list_allocator::LockedHeap;
+use super::output::*;
 
-mod uart;
-pub use uart::*;
+pub mod uart;
 
 #[naked]
 #[no_mangle]
@@ -13,7 +13,11 @@ extern "C" fn _start() -> ! {
     unsafe {
         asm!(
             "
+                csrr t0, 0xf14
                 la sp, {end_stack}
+                li t2, 4096
+                mul t1, t0, t2
+                sub sp, sp, t1
                 j main
             ",
             end_stack = sym _end_stack,
@@ -31,6 +35,7 @@ fn alloc_error(_layout: core::alloc::Layout) -> ! {
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     println("PANIC!");
+    unsafe { asm! { "ebreak" } }
     loop {}
 }
 
@@ -41,22 +46,31 @@ extern "C" {
     static _end_heap: usize;
 }
 
+// not actually safe between harts, but shouldn't be used so ignore?
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
+#[inline(always)]
+pub fn hartid() -> usize {
+    let hartid: usize;
+    unsafe { asm!("csrrs {0}, {1}, x0", out(reg) hartid, const 0xf14); }
+    return hartid;
+}
+
 pub unsafe fn init_heap() {
     let stack_end = &_end_stack as *const usize as usize;
-    let heap_start = &_begin_heap as *const usize as usize;
+    let heap_start = stack_end + hartid() * 4096;
     let heap_end = &_end_heap as *const usize as usize;
+    let heap_end = heap_end.min(heap_start + 4096);
     let heap_size = heap_end - heap_start;
 
-    print("> stack_end:   ");
+    print("> stack_end(sym): ");
     print_usize(stack_end);
-    print("\n> heap_start:  ");
+    print("\n> heap_start:     ");
     print_usize(heap_start);
-    print("\n> heap_end:    ");
+    print("\n> heap_end:       ");
     print_usize(heap_end);
-    print("\n> heap_size:   ");
+    print("\n> heap_size:      ");
     print_usize(heap_size);
     print("\n");
 

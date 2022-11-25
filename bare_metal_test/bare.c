@@ -101,6 +101,20 @@ int main(void) {
         print("\n");
     }
 
+    print("[bare] testing memory writeback...\n");
+    volatile unsigned int *ptr = (unsigned int*)0x80010000;
+    *ptr = 0xccddeeff;
+    __asm volatile("fence.i");
+    unsigned int readback = *ptr;
+    if (readback != 0xccddeeff) {
+        print("[bare/writeback] test failed! expected=0xccddeeff got=0x");
+        print_hex(readback);
+        print("\n");
+        __asm volatile ("ebreak");
+        while (true) {}
+    }
+    print("[bare/writeback] success!\n");
+
     print("[bare] testing trap handler...\n");
     __asm volatile("csrw sip, 0x2");
 

@@ -10,28 +10,40 @@ extern crate alloc;
 mod low_level;
 use low_level::*;
 
+mod output;
+use output::*;
+
 mod raytrace;
 use raytrace::*;
 
 mod math;
 use math::*;
 
-const RAM_BASE: u32 = 0x80000000;
-const FB_START: u32 = 0x80000;
-const FB_WIDTH: u32 = 2048;
-const FB_HEIGHT: u32 = 2048 - 16 /* progmem */ - 128 /* CPU state */;
-// const AA_BORDER: u32 = 10;
+mod fb;
+use fb::*;
 
-static mut SUPERSCALE: u32 = 96; // start at 48
-pub fn superscale() -> u32 {
-    unsafe { SUPERSCALE }
-}
+mod text;
+use text::*;
+
+// const AA_BORDER: u32 = 10;
+const SUPERSCALE: u32 = 112;
 
 #[no_mangle]
 pub fn main() -> ! {
+    print("hartid (core) = ");
+    print_usize(hartid());
+    println("");
+
     println("Initializing heap...");
     unsafe {
         init_heap();
+    }
+
+    if hartid() == 7 {
+        println("Starting text rendering loop...");
+        println("\nThis core is responsible for printing all the\ntext you see here, while the other 7 are\nrunning the raytracing algorithm.");
+        println("\nThe image will gradually gain more resolution,\nand if you let it run, it will eventually be\npixel perfect!");
+        render_text();
     }
 
     println("Setting up scene...");
@@ -132,25 +144,30 @@ pub fn main() -> ! {
         intensity: 0.07,
     });
 
-    while superscale() > 1 {
-        unsafe { SUPERSCALE /= 2 };
+    let mut superscale = SUPERSCALE;
+    let starty = FB_HEIGHT_SLICE * hartid() as u32;
+
+    while superscale > 1 {
+        superscale /= 2;
         print("Tracing @");
-        print_usize(superscale() as usize);
+        print_usize(superscale as usize);
         print(" ");
 
-        for y in (0..(FB_HEIGHT / superscale())).rev() {
-            for x in 0..(FB_WIDTH / superscale()) {
+        let sy = starty/superscale;
+        for y in sy..(FB_HEIGHT_SLICE / superscale + sy) {
+            for x in 0..(FB_WIDTH / superscale) {
                 // Testpattern:
-                // let col = Vector3::new(
-                //     if (x % 2) == 0 { 255 } else { 0 },
-                //     ((y * 255) / (FB_HEIGHT / superscale())) as i32,
-                //     if (y % 2) == 0 { 255 } else { 0 },
-                // );
+                // let col = Color {
+                //     r: if (x % 2) == 0 { 255 } else { 0 },
+                //     g: (y * 255) / (FB_HEIGHT / superscale),
+                //     b: if (y % 2) == 0 { 255 } else { 0 },
+                // };
                 let col = scene.raytrace(
-                    x as i32 - (FB_WIDTH / superscale() / 2) as i32,
-                    y as i32 - (FB_HEIGHT / superscale() / 2) as i32,
+                    x as i32 - (FB_WIDTH / superscale / 2) as i32,
+                    y as i32 - ((FB_HEIGHT - FB_HEIGHT_SLICE) / superscale / 2) as i32,
+                    superscale,
                 );
-                write_px(x, y, col);
+                write_px(x, y, col, superscale);
             }
 
             print(".");
@@ -158,7 +175,7 @@ pub fn main() -> ! {
 
         // print(" Done!\nAnti-Aliasing");
 
-        // for y in 0..(FB_HEIGHT / superscale()) {
+        // for y in 0..(FB_HEIGHTxxx / superscale()) {
         //     for x in 0..(FB_WIDTH / superscale()) {
         //         // tap neighboring pixels and mix into borders
         //         let cur = read_px_raw(x * superscale() + superscale() / 2, y * superscale() + superscale() / 2);
@@ -205,23 +222,21 @@ pub fn main() -> ! {
     loop {}
 }
 
-fn write_px(x: u32, y: u32, col: Color) {
-    let col = col.to_u128();
-    let x = x * superscale();
-    let y = y * superscale();
+fn write_px(x: u32, y: u32, col: Color, superscale: u32) {
+    let x = x * superscale;
+    let y = y * superscale;
 
-    for ys in 0..superscale() {
-        for xs in 0..superscale() {
+    if superscale > 7 {
+        unsafe { write_px_memop(x, y+32, col, superscale); }
+        return;
+    }
+
+    let col = col.to_u128();
+
+    for ys in 0..superscale {
+        for xs in 0..superscale {
             write_px_raw(x + xs, y + ys, col);
         }
-    }
-}
-
-fn write_px_raw(x: u32, y: u32, col: u128) {
-    unsafe {
-        let ptr = (FB_START | RAM_BASE) as *mut u128;
-        let ptr = ptr.add((x + y * FB_WIDTH) as usize);
-        ptr.write(col);
     }
 }
 

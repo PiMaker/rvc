@@ -3,9 +3,11 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <time.h>
 #include "types.h"
 #include "trap.h"
 #include "mmu.h"
+#include "net.h"
 
 const uint CSR_USTATUS = 0x000;
 const uint CSR_UIE = 0x004;
@@ -50,10 +52,32 @@ const uint CSR_MEMOP_SRC = 0x0b1;
 const uint CSR_MEMOP_DST = 0x0b2;
 const uint CSR_MEMOP_N = 0x0b3;
 
+const uint CSR_PLAYER_ID = 0xbe;
+const uint CSR_RNG = 0x0bf;
+
+const uint CSR_NET_TX_BUF_ADDR = 0x0c0;
+const uint CSR_NET_TX_BUF_SIZE_AND_SEND = 0x0c1;
+const uint CSR_NET_RX_BUF_ADDR = 0x0c2;
+const uint CSR_NET_RX_BUF_READY = 0x0c3;
+
 #define MMU_ACCESS_FETCH 0
 #define MMU_ACCESS_READ 1
 #define MMU_ACCESS_WRITE 2
 extern uint mmu_translate(ins_ret *ins, uint addr, uint mode);
+
+uint xorshift(uint seed) {
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return seed;
+}
+
+uint rng() {
+    // assume this always works I'm too lazy to error check
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return xorshift(ts.tv_nsec);
+}
 
 bool has_csr_access_privilege(cpu_t *cpu, uint addr) {
     uint privilege = (addr >> 8) & 0x3;
@@ -71,11 +95,16 @@ uint read_csr_raw(cpu_t *cpu, uint address) {
         case CSR_CYCLE: return cpu->clock;
         case CSR_MHARTID: return 0;
         case CSR_SATP: return (cpu->mmu.mode << 31) | cpu->mmu.ppn;
+        case CSR_RNG: return rng();
+        case CSR_PLAYER_ID: return is_server() ? 2 : 1;
+        case CSR_NET_TX_BUF_ADDR: return 0x11000000;
+        case CSR_NET_RX_BUF_ADDR: return 0x11001000;
         default: return cpu->csr.data[address & 0xffff];
     }
 }
 
 void write_csr_raw(cpu_t *cpu, uint address, uint value) {
+
     switch (address) {
         case CSR_SSTATUS:
             cpu->csr.data[CSR_MSTATUS] &= ~0x000de162;
@@ -102,8 +131,33 @@ void write_csr_raw(cpu_t *cpu, uint address, uint value) {
                 uint src = mmu_translate(&ins, cpu->csr.data[CSR_MEMOP_SRC], MMU_ACCESS_READ);
                 uint dst = mmu_translate(&ins, cpu->csr.data[CSR_MEMOP_DST], MMU_ACCESS_WRITE);
                 uint n = cpu->csr.data[CSR_MEMOP_N];
-                memcpy(&cpu->mem[dst & (~0x80000000)], &cpu->mem[src & (~0x80000000)], n);
+                uint8_t *srcb, *dstb;
+                // FIXME: can still crash with non-ram and non-mtd addresses
+                if (src & 0x80000000) {
+                    srcb = cpu->mem;
+                    src &= ~0x80000000;
+                } else {
+                    srcb = cpu->mtd;
+                    src &= ~0x40000000;
+                    src %= cpu->mtd_size;
+                }
+                if (dst & 0x80000000) {
+                    dstb = cpu->mem;
+                    dst &= ~0x80000000;
+                } else {
+                    dstb = cpu->mtd;
+                    dst &= ~0x40000000;
+                    dst %= cpu->mtd_size - n; // FIXME: incorrect for boundary
+                }
+                memcpy(dstb + dst, srcb + src, n);
             }
+            break;
+        case CSR_NET_TX_BUF_SIZE_AND_SEND:
+            /* cpu->csr.data[address] = value; */
+            net_send(cpu->net.nettx, value);
+            break;
+        case CSR_NET_RX_BUF_READY:
+            cpu->net.rx_ready = value;
             break;
         default: cpu->csr.data[address] = value; break;
     };

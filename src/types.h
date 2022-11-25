@@ -11,6 +11,8 @@ static bool SINGLE_STEP = false;
 typedef uint32_t uint;
 typedef uint32_t uint;
 
+static float _Time;
+
 typedef struct {
     uint data[4096];
     uint privilege;
@@ -37,6 +39,12 @@ typedef struct {
 } mmu_state;
 
 typedef struct {
+    uint rx_ready;
+    uint8_t *nettx;
+    uint8_t *netrx;
+} net_state;
+
+typedef struct {
     uint clock;
     uint xreg[32];
     uint pc;
@@ -48,6 +56,10 @@ typedef struct {
     clint_state clint;
     uart_state uart;
     mmu_state mmu;
+    net_state net;
+
+    uint rtc0, rtc1;
+    float start_time_ref;
 
     bool reservation_en;
     uint reservation_addr;

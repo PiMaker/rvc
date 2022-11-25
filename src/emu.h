@@ -3,12 +3,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
+#include <math.h>
 #include "types.h"
 #include "ins.h"
 #include "mem.h"
 #include "mmu.h"
 #include "trap.h"
 #include "csr.h"
+#include "net.h"
 
 #include "pngout.h"
 static int ebreak_png = 0;
@@ -202,10 +205,12 @@ DEF(divu, FormatR, { // rv32m
     }
     WR_RD(result)
 })
+extern void cpu_dump(cpu_t *cpu);
 DEF(ebreak, FormatEmpty, { // system
     printf("EBREAK!\n");
-    VERBOSE=4;
-    SINGLE_STEP=1;
+    cpu_dump(cpu);
+    /* VERBOSE=4; */
+    /* SINGLE_STEP=1; */
     /* char buf[12]; */
     /* sprintf(buf, "ram_%d.png", ebreak_png++); */
     /* int ret = write_ram_as_png(buf); */
@@ -597,6 +602,10 @@ ins_ret ins_select(cpu_t *cpu, uint ins_word) {
 
 
 void emulate(cpu_t *cpu) {
+    bool net_has_data;
+    uint8_t *net_data;
+    uint32_t net_data_len;
+
     uint ins_word = 0;
     ins_ret ret = ins_ret_noop(cpu);
     if ((cpu->pc & 0x3) == 0) {
@@ -624,19 +633,38 @@ void emulate(cpu_t *cpu) {
         cpu->csr.data[CSR_MIP] |= MIP_MSIP;
     }
 
-    cpu->clint.mtime_lo++;
-    cpu->clint.mtime_hi += cpu->clint.mtime_lo == 0 ? 1 : 0;
+    double mtime = _Time * 1000000.0 / 20.0 * 0.1;
+    cpu->clint.mtime_lo = (uint)(fmod(mtime, 4294967296.0)); // & 0xffffffff
+    cpu->clint.mtime_hi = (uint)(mtime / 4294967296.0); // >> 32
 
     if ((cpu->clint.mtimecmp_lo != 0 || cpu->clint.mtimecmp_hi != 0) && (cpu->clint.mtime_hi > cpu->clint.mtimecmp_hi || (cpu->clint.mtime_hi == cpu->clint.mtimecmp_hi && cpu->clint.mtime_lo >= cpu->clint.mtimecmp_lo))) {
         cpu->csr.data[CSR_MIP] |= MIP_MTIP;
-        if (VERBOSE >= 1)
+        if (VERBOSE >= 4)
             printf("timer irq: %d >= %d\n", cpu->clint.mtime_lo, cpu->clint.mtimecmp_lo);
     }
 
     uart_tick(cpu);
-    if (cpu->uart.interrupting) {
-        uint cur_mip = read_csr_raw(cpu, CSR_MIP);
-        write_csr_raw(cpu, CSR_MIP, cur_mip | MIP_SEIP);
+    uint cur_mip = read_csr_raw(cpu, CSR_MIP);
+    if (!(cur_mip & MIP_SEIP)) {
+        if (cpu->uart.interrupting) {
+            // uart interrupt
+            write_csr_raw(cpu, CSR_MIP, cur_mip | MIP_SEIP);
+        } else if (cpu->net.rx_ready) {
+            net_has_data = net_recv(&net_data, &net_data_len);
+            if (net_has_data) {
+                // network interrupt
+                write_csr_raw(cpu, CSR_MIP, cur_mip | MIP_SEIP);
+                uint8_t *dmabuf = cpu->net.netrx;
+                if (net_data_len > 4096 - sizeof(uint32_t)) {
+                    // maximum of one page size
+                    net_data_len = 4096 - sizeof(uint32_t);
+                }
+                *((uint32_t*)dmabuf) = net_data_len;
+                memcpy(dmabuf + sizeof(uint32_t), net_data, net_data_len);
+                cpu->net.rx_ready = false;
+                free(net_data);
+            }
+        }
     }
 
     handle_irq_and_trap(cpu, &ret);
