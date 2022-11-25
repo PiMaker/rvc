@@ -52,7 +52,7 @@ The `NixDebug.cs` (Udon) script needs to be placed on a camera pointing at a cam
 
 For both the target toolchain (`riscv32-gnu-linux-`) and the initramfs, [buildroot](https://buildroot.org/) is used - this is *not* a submodule, but an extracted and slightly modified version instead.
 
-To build, run `make buildroot-2021.05/build.marker` in the top level directory. The toolchain will be made in `buildroot-2021.05/output/host` and the rootfs in `buildroot-2021.05/output/images`. This will take a long time.
+To build, run `make buildroot-2022.02.1/build.marker` in the top level directory. The toolchain will be made in `buildroot-2022.02.1/output/host` and the rootfs in `buildroot-2022.02.1/output/images`. This will take a long time.
 
 ### Micropython
 
@@ -77,6 +77,8 @@ NOTE: This requires a custom rust toolchain, as the default one does not have a 
 ### linux
 
 To build the linux payload, run `make linux_payload.bin` in the top level directory. This requires the toolchain and initramfs to be built.
+
+Note that this uses a custom fork of the linux kernel that includes some custom rvc-specific patches. See the forked repo: https://github.com/pimaker/linux-rvc
 
 # Why?
 
