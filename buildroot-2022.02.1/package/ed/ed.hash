@@ -1,0 +1,4 @@
+# From https://lists.gnu.org/archive/html/bug-ed/2021-01/msg00000.html
+sha256  71de39883c25b6fab44add80635382a10c9bf154515b94729f4a6529ddcc5e54  ed-1.17.tar.lz
+# Locally calculated
+sha256  f03a12bef9dfb7281864a0dd965166d4f4ec7a66633df2bc72fa4363e57de02c  COPYING

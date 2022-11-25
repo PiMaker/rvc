@@ -1,0 +1,5 @@
+# md5, sha256 from https://pypi.org/pypi/networkx/json
+md5  407eb28c54e08725559754ca7ab185e0  networkx-2.6.3.tar.gz
+sha256  c0946ed31d71f1b732b5aaa6da5a0388a345019af232ce2f49c766e2d6795c51  networkx-2.6.3.tar.gz
+# Locally computed sha256 checksums
+sha256  f9c25c92ced5a264a3fe857231205d5eb625ae367935aaf8d61cdd5087dfb90e  LICENSE.txt

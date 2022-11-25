@@ -1,0 +1,7 @@
+# Locally calculated
+sha256  6ce28e969efae2ab74fe3eda61a5d90fcfc4bf734cd9f36942a6968189530e69  qtscxml-7a15000f42c7a3171719727cd056f82a78244ed7.tar.bz2
+
+# Hashes for license files:
+sha256  0dbe024961f6ab5c52689cbd036c977975d0d0f6a67ff97762d96cb819dd5652  LICENSE.GPL3-EXCEPT
+sha256  ed8742a95cb9db653a09b050e27ccff5e67ba69c14aa2c3137f2a4e1892f6c0d  LICENSE.FDL
+sha256  da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768  LICENSE.LGPL3

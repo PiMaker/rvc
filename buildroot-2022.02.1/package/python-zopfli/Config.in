@@ -1,0 +1,6 @@
+config BR2_PACKAGE_PYTHON_ZOPFLI
+	bool "python-zopfli"
+	help
+	  Zopfli module for python.
+
+	  https://github.com/fonttools/py-zopfli

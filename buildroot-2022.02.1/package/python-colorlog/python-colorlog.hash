@@ -1,0 +1,5 @@
+# md5, sha256 from https://pypi.org/pypi/colorlog/json
+md5  f1b92c1cac428b2e3c9ac7edf2988440  colorlog-6.4.1.tar.gz
+sha256  af99440154a01f27c09256760ea3477982bf782721feaa345904e806879df4d8  colorlog-6.4.1.tar.gz
+# Locally computed sha256 checksums
+sha256  b1d9082bc483623fd59fc7279b457f0e40d942a76426cde257239e04dfe4125a  LICENSE

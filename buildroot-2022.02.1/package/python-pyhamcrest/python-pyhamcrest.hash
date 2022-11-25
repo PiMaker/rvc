@@ -1,0 +1,5 @@
+# md5, sha256 from https://pypi.org/pypi/pyhamcrest/json
+md5  7a086f0b067f8d38958ec32f054559b4  PyHamcrest-2.0.2.tar.gz
+sha256  412e00137858f04bde0729913874a48485665f2d36fe9ee449f26be864af9316  PyHamcrest-2.0.2.tar.gz
+# Locally computed sha256 checksums
+sha256  71beae6c8151362cfe398cbd350191a1cc52d3d28499839a7830b25f5b50a7fe  LICENSE.txt

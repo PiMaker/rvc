@@ -1,0 +1,7 @@
+config BR2_PACKAGE_PYTHON_BCRYPT
+	bool "python-bcrypt"
+	select BR2_PACKAGE_PYTHON_CFFI # runtime
+	help
+	  Modern password hashing for your software and your servers.
+
+	  https://github.com/pyca/bcrypt/
