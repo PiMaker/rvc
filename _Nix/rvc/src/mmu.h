@@ -115,7 +115,7 @@ uint mmu_translate(inout ins_ret ins, uint addr, uint mode) {
     bool perm =
         priv == PRIV_MACHINE || // machine can read everything
         (priv == PRIV_USER && page.u) || // this is a user page
-        (priv == PRIV_SUPERVISOR && (!page.u || sum)); // supervisor page or SUM
+        (priv == PRIV_SUPERVISOR && (!page.u || (sum && mode != MMU_ACCESS_FETCH))); // SUM permits data access only
     bool access =
         (mode == MMU_ACCESS_FETCH && page.x) ||
         (mode == MMU_ACCESS_READ && (page.r || (page.x && mxr))) ||
