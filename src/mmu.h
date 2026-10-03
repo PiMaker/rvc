@@ -95,6 +95,7 @@ uint mmu_translate(ins_ret *ins, uint addr, uint mode) {
 
     uint sum, mxr;
     uint priv = get_effective_privilege(&sum, &mxr);
+    if (mode == MMU_ACCESS_FETCH) priv = cpu.csr.privilege; // MPRV affects data accesses only
 
     // machine mode fetch will always use physical addresses, otherwise 'mxr'
     // defines if paging will be used
