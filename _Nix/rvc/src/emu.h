@@ -25,6 +25,18 @@
 
 static uint prepared_mem_val;
 
+// High word of a 32x32 unsigned product, using only 32-bit integer operations.
+// Each partial product and the two carry sums fit in a uint.
+uint mul_high_unsigned(uint a, uint b) {
+    uint a0 = a & 0xFFFFu, a1 = a >> 16;
+    uint b0 = b & 0xFFFFu, b1 = b >> 16;
+    uint low = a0 * b0;
+    uint cross = a1 * b0 + (low >> 16);
+    uint carry = cross >> 16;
+    cross = a0 * b1 + (cross & 0xFFFFu);
+    return a1 * b1 + carry + (cross >> 16);
+}
+
 DEF(add, FormatR, { // rv32i
     WR_RD(AS_SIGNED(xreg(ins.rs1)) + AS_SIGNED(xreg(ins.rs2)));
 })
@@ -253,25 +265,22 @@ DEF(mul, FormatR, { // rv32m
     WR_RD(tmp)
 })
 DEF(mulh, FormatR, { // rv32m
-    // FIXME: mulh-family instructions have to use double precision floating points internally atm...
-    // umul/imul (https://docs.microsoft.com/en-us/windows/win32/direct3dhlsl/umul--sm4---asm-)
-    // do exist, but appear to be unusable?
-    precise double op1 = AS_SIGNED(xreg(ins.rs1));
-    precise double op2 = AS_SIGNED(xreg(ins.rs2));
-    uint tmp = uint((op1 * op2) / 4294967296.0l); // '/ 4294967296' == '>> 32'
+    uint a = xreg(ins.rs1);
+    uint b = xreg(ins.rs2);
+    uint tmp = mul_high_unsigned(a, b);
+    // Two's-complement sign correction, modulo 2^32.
+    tmp -= (0u - (a >> 31)) & b;
+    tmp -= (0u - (b >> 31)) & a;
     WR_RD(tmp)
 })
 DEF(mulhsu, FormatR, { // rv32m
-    // is the signed/unsigned stuff even correct? who knows...
-    precise double op1 = AS_SIGNED(xreg(ins.rs1));
-    precise double op2 = AS_UNSIGNED(xreg(ins.rs2));
-    uint tmp = uint((op1 * op2) / 4294967296.0l); // '/ 4294967296' == '>> 32'
+    uint a = xreg(ins.rs1);
+    uint b = xreg(ins.rs2);
+    uint tmp = mul_high_unsigned(a, b) - ((0u - (a >> 31)) & b);
     WR_RD(tmp)
 })
 DEF(mulhu, FormatR, { // rv32m
-    precise double op1 = AS_UNSIGNED(xreg(ins.rs1));
-    precise double op2 = AS_UNSIGNED(xreg(ins.rs2));
-    uint tmp = uint((op1 * op2) / 4294967296.0l); // '/ 4294967296' == '>> 32'
+    uint tmp = mul_high_unsigned(xreg(ins.rs1), xreg(ins.rs2));
     WR_RD(tmp)
 })
 DEF(or, FormatR, { // rv32i
