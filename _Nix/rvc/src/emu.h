@@ -374,12 +374,12 @@ DEF(srai, FormatR, { // rv32i
 DEF(sret, FormatEmpty, { // system
     uint newpc = get_csr(CSR_SEPC, ret);
     if (!ret.trap.en) {
-        uint status = read_csr_raw(CSR_SSTATUS);
+        uint status = read_csr_raw(CSR_MSTATUS);
         uint spie = (status >> 5) & 1;
         uint spp = (status >> 8) & 1;
         uint mprv = spp == PRIV_MACHINE ? ((status >> 17) & 1) : 0;
         uint new_status = (status & ~0x20122) | (mprv << 17) | (spie << 1) | (1 << 5);
-        write_csr_raw(CSR_SSTATUS, new_status);
+        write_csr_raw(CSR_MSTATUS, new_status);
         cpu.csr.privilege = spp;
         WR_PC(newpc)
     }
